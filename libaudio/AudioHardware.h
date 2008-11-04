@@ -199,7 +199,7 @@ private:
             AudioStreamOutMSM72xx*  mOutput;
             AudioStreamInMSM72xx*   mInput;
 
-            snd_endpoint *mSndEndpoints;
+            msm_snd_endpoint *mSndEndpoints;
             int mNumSndEndpoints;
 
             int SND_DEVICE_CURRENT;

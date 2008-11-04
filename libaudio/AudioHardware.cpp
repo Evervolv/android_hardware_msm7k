@@ -72,63 +72,48 @@ AudioHardware::AudioHardware() :
         audpp_filter_inited = true;
 
 #if INIT_AUDIO_ONCE
-    if (msm72xx_init_record())
+    if (msm72xx_init_record()) {
         LOGE("msm72xx_init_record failed");
-    else 
+        return;
+    }
 #endif
-    {
-        int fd = open("/dev/msm_snd", O_RDWR);
-        if (fd >= 0) {        
-            int rc = ioctl(fd, SND_GET_ENDPOINTS, NULL);
-            rc /= sizeof(snd_endpoint);
-            if (rc >= 0) {
-                mSndEndpoints = new snd_endpoint[rc];
-                mNumSndEndpoints = rc;
-                LOGI("++++ NUMBER OF ENDPOINTS: %d", rc);
-                if (ioctl(fd, SND_GET_ENDPOINTS, mSndEndpoints) < 0) {
-                    LOGE("Could not retrieve MSM SND endpoints.");
-                }
-                else {
-                    mInit = true;
-                    LOGV("constructed");                    
-                    struct snd_endpoint *ept = mSndEndpoints;
-                    for (int cnt = 0; cnt < mNumSndEndpoints; cnt++, ept++) {
-                        LOGI("[%s] [%d]", ept->name, ept->id);
-#define CHECK_FOR(desc) \
-do { \
-    if (!strcmp(ept->name, #desc)) { \
-        LOGI("++++ [%s] [%d] HIT", ept->name, ept->id); \
-        SND_DEVICE_##desc = ept->id; \
-    } \
-} while(0)
-                        CHECK_FOR(CURRENT);
-                        CHECK_FOR(HANDSET);
-                        CHECK_FOR(SPEAKER);
-                        CHECK_FOR(BT);
-                        CHECK_FOR(BT_EC_OFF);
-                        CHECK_FOR(HEADSET);
-                        CHECK_FOR(HEADSET_AND_SPEAKER);
+
+    int fd = open("/dev/msm_snd", O_RDWR);
+    if (fd >= 0) {
+        int rc = ioctl(fd, SND_GET_NUM_ENDPOINTS,
+                       &mNumSndEndpoints);
+        if (rc >= 0) {
+            mSndEndpoints = new msm_snd_endpoint[mNumSndEndpoints];
+            mInit = true;
+            LOGV("constructed (%d SND endpoints)", rc);
+            struct msm_snd_endpoint *ept = mSndEndpoints;
+            for (int cnt = 0; cnt < mNumSndEndpoints; cnt++, ept++) {
+                ept->id = cnt;
+                ioctl(fd, SND_GET_ENDPOINT, ept);
+                LOGV("    %02: %s / %d", cnt, ept->name, ept->id);
+#define CHECK_FOR(desc) if (!strcmp(ept->name, #desc)) SND_DEVICE_##desc = ept->id;
+                CHECK_FOR(CURRENT);
+                CHECK_FOR(HANDSET);
+                CHECK_FOR(SPEAKER);
+                CHECK_FOR(BT);
+                CHECK_FOR(BT_EC_OFF);
+                CHECK_FOR(HEADSET);
+                CHECK_FOR(HEADSET_AND_SPEAKER);
 #undef CHECK_FOR
-                        mBluetoothId = 0;
-                        for (unsigned hs = 0; 
-                                 hs < sizeof(KNOWN_HEADSETS) /
-                                      sizeof(KNOWN_HEADSETS[0]);
-                                 hs++) {
-                            if (KNOWN_HEADSETS[hs].id < 0 &&
-                                    !strcmp(ept->name,
-                                            KNOWN_HEADSETS[hs].probe)) {
-                                LOGI("++BT [%s] [%d] HIT", ept->name, ept->id);
-                                KNOWN_HEADSETS[hs].id = ept->id;
-                            }
-                        }
-                    }
+                mBluetoothId = 0;
+                for (unsigned hs = 0; 
+                         hs < sizeof(KNOWN_HEADSETS)/sizeof(KNOWN_HEADSETS[0]);
+                         hs++) {
+                    if (KNOWN_HEADSETS[hs].id < 0 &&
+                            !strcmp(ept->name, KNOWN_HEADSETS[hs].probe))
+                        KNOWN_HEADSETS[hs].id = ept->id;
                 }
             }
-            else LOGE("Could not retrieve number of MSM SND endpoints.");
-            close(fd);
         }
-        else LOGE("Could not open MSM SND driver.");
+        else LOGE("Could not retrieve number of MSM SND endpoints.");
+        close(fd);
     }
+    else LOGE("Could not open MSM SND driver.");
 }
 
 AudioHardware::~AudioHardware()
@@ -600,7 +585,7 @@ static status_t set_volume_rpc(uint32_t device,
      *  )
      * rpc_snd_set_volume only works for in-call sound volume.
      */
-    struct snd_volume_config args;
+    struct msm_snd_volume_config args;
     args.device = device;
     args.method = method;
     args.volume = volume;
@@ -675,7 +660,7 @@ static status_t do_route_audio_rpc(uint32_t device,
      *                        # recording.
      *  )
      */
-    struct snd_device_config args;
+    struct msm_snd_device_config args;
     args.device = device;
     args.ear_mute = ear_mute ? SND_MUTE_MUTED : SND_MUTE_UNMUTED;
     args.mic_mute = mic_mute ? SND_MUTE_MUTED : SND_MUTE_UNMUTED;
