@@ -1,22 +1,22 @@
 /*
 ** Copyright 2008, Google Inc.
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
 #include <math.h>
 
-// #define LOG_NDEBUG 0
+//#define LOG_NDEBUG 0
 #define LOG_TAG "AudioHardwareMSM72XX"
 #include <utils/Log.h>
 #include <utils/String8.h>
@@ -31,7 +31,6 @@
 
 // hardware specific functions
 
-#include "BluetoothHeadsetTable.h"
 #include "AudioHardware.h"
 
 #define LOG_SND_RPC 0  // Set to 1 to log sound RPC's
@@ -39,8 +38,8 @@
 namespace android {
 
 /* When this macro is non-zero, we initialize playback and recording
- * only once--when we construct the AudioHardwareMSM72xx class--and 
- * deinitialize them in this class' destructor.  When the macro is 
+ * only once--when we construct the AudioHardwareMSM72xx class--and
+ * deinitialize them in this class' destructor.  When the macro is
  * set to zero, we initialize playback and recording before we start
  * the respective operation, and deinitialize them after we stop that
  * operation.
@@ -54,6 +53,9 @@ static uint16_t eq_flag;
 static uint16_t rx_iir_flag;
 static bool audpp_filter_inited = false;
 
+const uint32_t AudioHardware::inputSamplingRates[] = {
+        8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000
+};
 // ----------------------------------------------------------------------------
 
 AudioHardware::AudioHardware() :
@@ -85,29 +87,21 @@ AudioHardware::AudioHardware() :
         if (rc >= 0) {
             mSndEndpoints = new msm_snd_endpoint[mNumSndEndpoints];
             mInit = true;
-            LOGV("constructed (%d SND endpoints)", rc);
+            LOGV("constructed d SND endpoints)", rc);
             struct msm_snd_endpoint *ept = mSndEndpoints;
             for (int cnt = 0; cnt < mNumSndEndpoints; cnt++, ept++) {
                 ept->id = cnt;
                 ioctl(fd, SND_GET_ENDPOINT, ept);
-                LOGV("    %02: %s / %d", cnt, ept->name, ept->id);
-#define CHECK_FOR(desc) if (!strcmp(ept->name, #desc)) SND_DEVICE_##desc = ept->id;
-                CHECK_FOR(CURRENT);
-                CHECK_FOR(HANDSET);
-                CHECK_FOR(SPEAKER);
-                CHECK_FOR(BT);
-                CHECK_FOR(BT_EC_OFF);
-                CHECK_FOR(HEADSET);
-                CHECK_FOR(HEADSET_AND_SPEAKER);
+                LOGV("    s / (02: d", cnt, ept->name, ept->id);
+#define CHECK_FOR(desc) if (!strcmp(ept->name, #desc)) SND_DEVICE_##desc = ept->id; else
+                CHECK_FOR(CURRENT)
+                CHECK_FOR(HANDSET)
+                CHECK_FOR(SPEAKER)
+                CHECK_FOR(BT)
+                CHECK_FOR(BT_EC_OFF)
+                CHECK_FOR(HEADSET)
+                CHECK_FOR(HEADSET_AND_SPEAKER) {}
 #undef CHECK_FOR
-                mBluetoothId = 0;
-                for (unsigned hs = 0; 
-                         hs < sizeof(KNOWN_HEADSETS)/sizeof(KNOWN_HEADSETS[0]);
-                         hs++) {
-                    if (KNOWN_HEADSETS[hs].id < 0 &&
-                            !strcmp(ept->name, KNOWN_HEADSETS[hs].probe))
-                        KNOWN_HEADSETS[hs].id = ept->id;
-                }
             }
         }
         else LOGE("Could not retrieve number of MSM SND endpoints.");
@@ -134,16 +128,25 @@ status_t AudioHardware::initCheck()
 }
 
 AudioStreamOut* AudioHardware::openOutputStream(
-        int format, int channelCount, uint32_t sampleRate)
+        int format, int channelCount, uint32_t sampleRate, status_t *status)
 {
     Mutex::Autolock lock(mLock);
 
     // only one output stream allowed
-    if (mOutput) return 0;
+    if (mOutput) {
+        if (status) {
+            *status = INVALID_OPERATION;
+        }
+        return 0;
+    }
 
     // create new output stream
     AudioStreamOutMSM72xx* out = new AudioStreamOutMSM72xx();
-    if (out->set(this, format, channelCount, sampleRate) == NO_ERROR) {
+    status_t lStatus = out->set(this, format, channelCount, sampleRate);
+    if (status) {
+        *status = lStatus;
+    }
+    if (lStatus == NO_ERROR) {
         mOutput = out;
         standby_nosync();
     } else {
@@ -163,20 +166,32 @@ void AudioHardware::closeOutputStream(AudioStreamOutMSM72xx* out) {
 }
 
 AudioStreamIn* AudioHardware::openInputStream(
-        int format, int channelCount, uint32_t sampleRate)
+        int format, int channelCount, uint32_t sampleRate, status_t *status)
 {
-    Mutex::Autolock lock(mLock);
-
+    mLock.lock();
     // input stream already open?
-    if (mInput) return 0;
+    if (mInput) {
+        if (status) {
+            *status = INVALID_OPERATION;
+        }
+        mLock.unlock();
+        return 0;
+    }
 
     AudioStreamInMSM72xx* in = new AudioStreamInMSM72xx();
-    if (in->set(this, format, channelCount, sampleRate) != NO_ERROR) {
+    status_t lStatus = in->set(this, format, channelCount, sampleRate);
+    if (status) {
+        *status = lStatus;
+    }
+    if (lStatus != NO_ERROR) {
+        mLock.unlock();
         delete in;
         return 0;
     }
 
     mInput = in;
+    mLock.unlock();
+
     return mInput;
 }
 
@@ -263,12 +278,9 @@ status_t AudioHardware::setParameter(const char *key, const char *value)
         doRouting();
     } else if (!strncmp(key, BT_NAME_KEY, sizeof(BT_NAME_KEY))) {
         mBluetoothId = 0;
-        for (uint32_t i = 0; i < sizeof(KNOWN_HEADSETS) / sizeof(KNOWN_HEADSETS[0]);
-                i++) {
-            if (!strncasecmp(value, KNOWN_HEADSETS[i].name,
-                             sizeof(KNOWN_HEADSETS[i].name)) &&
-                KNOWN_HEADSETS[i].id >= 0) {
-                mBluetoothId = KNOWN_HEADSETS[i].id;
+        for (int i = 0; i < mNumSndEndpoints; i++) {
+            if (!strcasecmp(value, mSndEndpoints[i].name)) {
+                mBluetoothId = mSndEndpoints[i].id;
                 LOGI("Using custom acoustic parameters for %s", value);
                 break;
             }
@@ -282,6 +294,25 @@ status_t AudioHardware::setParameter(const char *key, const char *value)
 
     return NO_ERROR;
 }
+
+size_t AudioHardware::getInputBufferSize(uint32_t sampleRate, int format, int channelCount)
+{
+    if (checkInputSampleRate(sampleRate) != NO_ERROR) {
+        LOGW("getInputBufferSize bad sampling rate: %d", sampleRate);
+        return 0;
+    }
+    if (format != AudioSystem::PCM_16_BIT) {
+        LOGW("getInputBufferSize bad format: %d", format);
+        return 0;
+    }
+    if (channelCount < 1 || channelCount > 2) {
+        LOGW("getInputBufferSize bad channel count: %d", channelCount);
+        return 0;
+    }
+
+    return 2048*channelCount;
+}
+
 
 int check_and_set_audpp_parameters(char *buf, int size)
 {
@@ -307,28 +338,28 @@ int check_and_set_audpp_parameters(char *buf, int size)
     }
     if (buf[0] == 'A' && buf[1] == '1') {
         /* IIR filter */
-	if (!(p = strtok(buf, ",")))
+    if (!(p = strtok(buf, ",")))
             goto token_err;
-	
-	/* Table header */	
+
+    /* Table header */
         table_num = strtol(p + 1, &ps, 10);
         if (!(p = strtok(NULL, seps)))
             goto token_err;
-    	/* Table description */
-    	if (!(p = strtok(NULL, seps)))
+        /* Table description */
+        if (!(p = strtok(NULL, seps)))
             goto token_err;
 
-	for (i = 0; i < 48; i++) {
-	    j = (i >= 40)? i : ((i % 2)? (i - 1) : (i + 1));
+    for (i = 0; i < 48; i++) {
+        j = (i >= 40)? i : ((i % 2)? (i - 1) : (i + 1));
             iir_cfg.iir_params[j] = (uint16_t)strtol(p, &ps, 16);
-	    if (!(p = strtok(NULL, seps)))
+        if (!(p = strtok(NULL, seps)))
                 goto token_err;
         }
         rx_iir_flag = (uint16_t)strtol(p, &ps, 16);
-	if (!(p = strtok(NULL, seps)))
+    if (!(p = strtok(NULL, seps)))
             goto token_err;
-	iir_cfg.num_bands = (uint16_t)strtol(p, &ps, 16);
-	
+    iir_cfg.num_bands = (uint16_t)strtol(p, &ps, 16);
+
         if (ioctl(fd, AUDIO_SET_RX_IIR, &iir_cfg) < 0) {
             LOGE("set rx iir filter error.");
             return -EIO;
@@ -478,7 +509,7 @@ static int get_audpp_filter(void)
     int csvfd;
 
     LOGI("get_audpp_filter");
-    static const char *const path = 
+    static const char *const path =
         "/system/etc/AudioFilter.csv";
     csvfd = open(path, O_RDONLY);
     if (csvfd < 0) {
@@ -499,7 +530,7 @@ static int get_audpp_filter(void)
                     PROT_READ | PROT_WRITE,
                     MAP_PRIVATE,
                     csvfd, 0);
-    
+
     if (read_buf == MAP_FAILED) {
         LOGE("failed to mmap parameters file: %s (%d)",
              strerror(errno), errno);
@@ -519,14 +550,14 @@ static int get_audpp_filter(void)
         if (check_and_set_audpp_parameters(current_str, len)) {
             LOGI("failed to set audpp parameters, exiting.");
             munmap(read_buf, st.st_size);
-	    close(csvfd);
-	    return -1;
+        close(csvfd);
+        return -1;
         }
         current_str = next_str;
     }
 
     munmap(read_buf, st.st_size);
-    close(csvfd);    
+    close(csvfd);
     return 0;
 }
 
@@ -535,7 +566,7 @@ static int msm72xx_enable_audpp(uint16_t enable_mask)
     int fd;
 
     if (!audpp_filter_inited) return -EINVAL;
-    
+
     fd = open("/dev/msm_pcm_ctl", O_RDWR);
     if (fd < 0) {
         LOGE("Cannot open audio device");
@@ -543,19 +574,19 @@ static int msm72xx_enable_audpp(uint16_t enable_mask)
     }
 
     if (adrc_flag == 0 && (enable_mask & ADRC_ENABLE))
-       	enable_mask &= ~ADRC_ENABLE;
+           enable_mask &= ~ADRC_ENABLE;
     if (eq_flag == 0 && (enable_mask & EQ_ENABLE))
-	enable_mask &= ~EQ_ENABLE;
+    enable_mask &= ~EQ_ENABLE;
     if (rx_iir_flag == 0 && (enable_mask & IIR_ENABLE))
-        enable_mask &= ~IIR_ENABLE;   
-	
+        enable_mask &= ~IIR_ENABLE;
+
     LOGD("msm72xx_enable_audpp: 0x%04x", enable_mask);
     if (ioctl(fd, AUDIO_ENABLE_AUDPP, &enable_mask) < 0) {
         LOGE("enable audpp error");
         close(fd);
         return -EPERM;
     }
-    
+
     close(fd);
     return 0;
 }
@@ -585,19 +616,18 @@ static status_t set_volume_rpc(uint32_t device,
      *  )
      * rpc_snd_set_volume only works for in-call sound volume.
      */
-    struct msm_snd_volume_config args;
-    args.device = device;
-    args.method = method;
-    args.volume = volume;
+     struct msm_snd_volume_config args;
+     args.device = device;
+     args.method = method;
+     args.volume = volume;
 
-    if (ioctl(fd, SND_SET_VOLUME, &args) < 0) {
-        LOGE("snd_set_volume error.");
-        close(fd);
-        return -EIO;
-    }
-
-    close(fd);
-    return NO_ERROR;
+     if (ioctl(fd, SND_SET_VOLUME, &args) < 0) {
+         LOGE("snd_set_volume error.");
+         close(fd);
+         return -EIO;
+     }
+     close(fd);
+     return NO_ERROR;
 }
 
 status_t AudioHardware::setVoiceVolume(float v)
@@ -623,7 +653,6 @@ status_t AudioHardware::setMasterVolume(float v)
     Mutex::Autolock lock(mLock);
     int vol = ceil(v * 5.0);
     LOGI("Set master volume to %d.\n", vol);
-
     set_volume_rpc(SND_DEVICE_HANDSET, SND_METHOD_VOICE, vol);
     set_volume_rpc(SND_DEVICE_SPEAKER, SND_METHOD_VOICE, vol);
     set_volume_rpc(SND_DEVICE_BT,      SND_METHOD_VOICE, vol);
@@ -686,7 +715,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
         }
     }
     return do_route_audio_rpc(device,
-            mMode != AudioSystem::MODE_IN_CALL, mMicMute);
+                              mMode != AudioSystem::MODE_IN_CALL, mMicMute);
 }
 
 static int count_bits(uint32_t vector)
@@ -704,14 +733,14 @@ status_t AudioHardware::doRouting()
     uint32_t routes = mRoutes[mMode];
     if (count_bits(routes) > 1) {
         if (routes !=
-                (AudioSystem::ROUTE_HEADSET | AudioSystem::ROUTE_SPEAKER)) {
+            (AudioSystem::ROUTE_HEADSET | AudioSystem::ROUTE_SPEAKER)) {
             LOGW("Hardware does not support requested route combination (%#X),"
                  " picking closest possible route...", routes);
         }
     }
 
     status_t ret = NO_ERROR;
-    if (routes & AudioSystem::ROUTE_BLUETOOTH) {
+    if (routes & AudioSystem::ROUTE_BLUETOOTH_SCO) {
         LOGI("Routing audio to Bluetooth PCM\n");
         ret = doAudioRouteOrMute(SND_DEVICE_BT);
         msm72xx_enable_audpp(ADRC_DISABLE | EQ_DISABLE | IIR_DISABLE);
@@ -746,7 +775,7 @@ status_t AudioHardware::checkMicMute()
     if (mMode != AudioSystem::MODE_IN_CALL) {
         setMicMute_nosync(true);
     }
-    
+
     return NO_ERROR;
 }
 
@@ -782,6 +811,16 @@ status_t AudioHardware::dump(int fd, const Vector<String16>& args)
         mOutput->dump(fd, args);
     }
     return NO_ERROR;
+}
+
+status_t AudioHardware::checkInputSampleRate(uint32_t sampleRate)
+{
+    for (uint32_t i = 0; i < sizeof(inputSamplingRates)/sizeof(uint32_t); i++) {
+        if (sampleRate == inputSamplingRates[i]) {
+            return NO_ERROR;
+        } 
+    }
+    return BAD_VALUE;
 }
 
 // ----------------------------------------------------------------------------
@@ -850,7 +889,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         config.channel_count = channelCount();
         config.sample_rate = sampleRate();
         config.buffer_size = bufferSize();
-        config.buffer_count = 2;
+        config.buffer_count = AUDIO_HW_NUM_OUT_BUF;
         config.codec_type = CODEC_TYPE_PCM;
         status = ioctl(mFd, AUDIO_SET_CONFIG, &config);
         if (status < 0) {
@@ -864,7 +903,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         LOGV("sample_rate: %u", config.sample_rate);
 
         // fill 2 buffers before AUDIO_START
-        mStartCount = 2;
+        mStartCount = AUDIO_HW_NUM_OUT_BUF;
         mHardware->mStandby = false;
     }
 
@@ -894,7 +933,7 @@ Error:
         mFd = -1;
     }
     // Simulate audio output timing in case of error
-    usleep(bytes * 1000000 / sizeof(int16_t) / channelCount() / sampleRate());
+    usleep(bytes * 1000000 / frameSize() / sampleRate());
 
     return status;
 }
@@ -939,7 +978,10 @@ status_t AudioHardware::AudioStreamOutMSM72xx::dump(int fd, const Vector<String1
 // ----------------------------------------------------------------------------
 
 AudioHardware::AudioStreamInMSM72xx::AudioStreamInMSM72xx() :
-    mHardware(0), mFd(-1), mRecordEnabled(false), mRetryCount(0)
+    mHardware(0), mFd(-1), mState(AUDIO_INPUT_CLOSED), mRetryCount(0),
+    mFormat(AUDIO_HW_IN_FORMAT), mChannelCount(AUDIO_HW_IN_CHANNELS), 
+    mSampleRate(AUDIO_HW_IN_SAMPLERATE), mBufferSize(AUDIO_HW_IN_BUFFERSIZE)
+
 {
 }
 
@@ -953,9 +995,16 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     }
 
     // open audio input device
-    status_t status = ::open("/dev/msm_pcm_in", O_RDWR);
+    // FIXME: Hack to get around kernel allocation problem
+    status_t status;
+    for (int retry = 0; retry < 10; ++retry) {
+        status = ::open("/dev/msm_pcm_in", O_RDWR);
+        if (status > 0) break;
+        LOGW("Error %d opening /dev/msm_pcm_in, attempt=%d", status, retry);
+        usleep(100000);
+    }
     if (status < 0) {
-        LOGE("Cannot open audio device");
+        LOGE("Cannot open audio input device");
         goto Error;
     }
     mFd = status;
@@ -992,9 +1041,14 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     LOGV("channel_count: %u", config.channel_count);
     LOGV("sample_rate: %u", config.sample_rate);
 
+    mFormat = format;
+    mChannelCount = config.channel_count;
+    mSampleRate = config.sample_rate;
+    mBufferSize = config.buffer_size;
+
     mHardware = hw;
     mHardware->setMicMute_nosync(false);
-    mRecordEnabled = false;
+    mState = AUDIO_INPUT_OPENED;
     return NO_ERROR;
 
 Error:
@@ -1007,28 +1061,33 @@ Error:
 
 AudioHardware::AudioStreamInMSM72xx::~AudioStreamInMSM72xx()
 {
-    LOGV("AudioHardware::closeRecord");
-    if (mFd < 0) return;
-    mHardware->checkMicMute();
-    ::close(mFd);
-    mRecordEnabled = false;
-    mHardware->closeInputStream(this);
+    LOGV("AudioStreamInMSM72xx destructor");
+    if (mHardware) {
+        standby();
+        mHardware->closeInputStream(this);
+    }
 }
 
 ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 {
     LOGV("AudioStreamInMSM72xx::read(%p, %u)", buffer, bytes);
-    if (mFd < 0) return NO_INIT;
+    if (!mHardware) return -1;
 
     size_t count = bytes;
     uint8_t* p = static_cast<uint8_t*>(buffer);
 
-    if (!mRecordEnabled) {
+    if (mState < AUDIO_INPUT_OPENED) {
+        if (set(mHardware, mFormat, mChannelCount, mSampleRate) != NO_ERROR) {
+            return -1;
+        }
+    }
+    
+    if (mState < AUDIO_INPUT_STARTED) {
         if (ioctl(mFd, AUDIO_START, 0)) {
             LOGE("Error starting record");
             return -1;
         }
-        mRecordEnabled = 1;
+        mState = AUDIO_INPUT_STARTED;
     }
 
     while (count) {
@@ -1043,6 +1102,20 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
         }
     }
     return bytes;
+}
+
+status_t AudioHardware::AudioStreamInMSM72xx::standby()
+{
+    if (!mHardware) return -1;
+    if (mState > AUDIO_INPUT_CLOSED) {
+        if (mFd > 0) {
+            ::close(mFd);
+            mFd = -1;
+        }
+        mHardware->checkMicMute();
+        mState = AUDIO_INPUT_CLOSED;
+    }
+    return NO_ERROR;
 }
 
 status_t AudioHardware::AudioStreamInMSM72xx::dump(int fd, const Vector<String16>& args)
@@ -1063,7 +1136,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::dump(int fd, const Vector<String16
     result.append(buffer);
     snprintf(buffer, SIZE, "\tmFd count: %d\n", mFd);
     result.append(buffer);
-    snprintf(buffer, SIZE, "\tmRecordEnabled: %s\n", mRecordEnabled? "true": "false");
+    snprintf(buffer, SIZE, "\tmState: %d\n", mState);
     result.append(buffer);
     snprintf(buffer, SIZE, "\tmRetryCount: %d\n", mRetryCount);
     result.append(buffer);

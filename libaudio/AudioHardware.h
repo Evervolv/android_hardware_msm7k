@@ -1,16 +1,16 @@
 /*
 ** Copyright 2008, Google Inc.
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
@@ -22,7 +22,7 @@
 
 #include <utils/threads.h>
 
-#include <hardware/AudioHardwareInterface.h>
+#include <hardware/AudioHardwareBase.h>
 
 extern "C" {
 #include <linux/msm_audio.h>
@@ -47,7 +47,7 @@ namespace android {
 #define AUDIO_SET_EQ       _IOW(AUDIO_IOCTL_MAGIC, 8, unsigned)
 #define AUDIO_SET_RX_IIR   _IOW(AUDIO_IOCTL_MAGIC, 9, unsigned)
 
-#define EQ_MAX_BAND_NUM	12
+#define EQ_MAX_BAND_NUM 12
 
 #define ADRC_ENABLE  0x0001
 #define ADRC_DISABLE 0x0000
@@ -88,11 +88,18 @@ struct msm_audio_stats {
 };
 
 #define CODEC_TYPE_PCM 0
+#define AUDIO_HW_NUM_OUT_BUF 2  // Number of buffers in audio driver for output
+// TODO: determine actual audio DSP and hardware latency
+#define AUDIO_HW_OUT_LATENCY_MS 0  // Additionnal latency introduced by audio DSP and hardware in ms
 
+#define AUDIO_HW_IN_SAMPLERATE 8000                 // Default audio input sample rate
+#define AUDIO_HW_IN_CHANNELS 1                      // Default audio input number of channels
+#define AUDIO_HW_IN_BUFFERSIZE 2048                 // Default audio input buffer size
+#define AUDIO_HW_IN_FORMAT (AudioSystem::PCM_16_BIT)  // Default audio input sample format
 // ----------------------------------------------------------------------------
 
 
-class AudioHardware : public  AudioHardwareInterface
+class AudioHardware : public  AudioHardwareBase
 {
     class AudioStreamOutMSM72xx;
     class AudioStreamInMSM72xx;
@@ -118,28 +125,33 @@ public:
     virtual AudioStreamOut* openOutputStream(
                                 int format=0,
                                 int channelCount=0,
-                                uint32_t sampleRate=0);
+                                uint32_t sampleRate=0,
+                                status_t *status=0);
 
     virtual AudioStreamIn* openInputStream(
                                 int format,
                                 int channelCount,
-                                uint32_t sampleRate);
+                                uint32_t sampleRate,
+                                status_t *status);
 
             void        closeOutputStream(AudioStreamOutMSM72xx* out);
             void        closeInputStream(AudioStreamInMSM72xx* in);
+            
+    virtual size_t getInputBufferSize(uint32_t sampleRate, int format, int channelCount);
 
 protected:
     virtual status_t    doRouting();
     virtual status_t    dump(int fd, const Vector<String16>& args);
 
 private:
-    
+
     status_t    standby_nosync();
     status_t    checkStandby();
     status_t    doAudioRouteOrMute(uint32_t device);
     status_t    setMicMute_nosync(bool state);
     status_t    checkMicMute();
-    status_t    dumpInternals(int fd, const Vector<String16>& args);
+    status_t    dumpInternals(int fd, const Vector<String16>& args);    
+    status_t    checkInputSampleRate(uint32_t sampleRate);
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
     public:
@@ -154,6 +166,7 @@ private:
         virtual size_t      bufferSize() const { return 4800; }
         virtual int         channelCount() const { return 2; }
         virtual int         format() const { return AudioSystem::PCM_16_BIT; }
+        virtual uint32_t    latency() const { return (1000*AUDIO_HW_NUM_OUT_BUF*(bufferSize()/frameSize()))/sampleRate()+AUDIO_HW_OUT_LATENCY_MS; }
         virtual status_t    setVolume(float volume) { return INVALID_OPERATION; }
         virtual ssize_t     write(const void* buffer, size_t bytes);
                 status_t    standby();
@@ -168,27 +181,39 @@ private:
 
     class AudioStreamInMSM72xx : public AudioStreamIn {
     public:
+        enum input_state {
+            AUDIO_INPUT_CLOSED,
+            AUDIO_INPUT_OPENED,
+            AUDIO_INPUT_STARTED
+        };
+
                             AudioStreamInMSM72xx();
         virtual             ~AudioStreamInMSM72xx();
                 status_t    set(AudioHardware* mHardware,
                                 int format,
                                 int channelCount,
                                 uint32_t sampleRate);
-        virtual size_t      bufferSize() const { return 2048; }
-        virtual int         channelCount() const { return 1; }
-        virtual int         format() const { return AudioSystem::PCM_16_BIT; }
-        virtual uint32_t    sampleRate() { return 8000; }
+        virtual size_t      bufferSize() const { return mBufferSize; }
+        virtual int         channelCount() const { return mChannelCount; }
+        virtual int         format() const { return mFormat; }
+        virtual uint32_t    sampleRate() { return mSampleRate; }
         virtual status_t    setGain(float gain) { return INVALID_OPERATION; }
         virtual ssize_t     read(void* buffer, ssize_t bytes);
         virtual status_t    dump(int fd, const Vector<String16>& args);
+        virtual status_t    standby();
 
     private:
                 AudioHardware* mHardware;
                 int         mFd;
-                bool        mRecordEnabled;
+                int         mState;
                 int         mRetryCount;
+                int         mFormat;
+                int         mChannelCount;
+                uint32_t    mSampleRate;
+                size_t      mBufferSize;
     };
 
+            static const uint32_t inputSamplingRates[];
             Mutex       mLock;
             bool        mInit;
             bool        mStandby;
