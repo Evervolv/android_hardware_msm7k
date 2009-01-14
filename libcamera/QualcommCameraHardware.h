@@ -35,6 +35,7 @@ public:
     virtual status_t    dump(int fd, const Vector<String16>& args) const;
     virtual status_t    startPreview(preview_callback cb, void* user);
     virtual void        stopPreview();
+    virtual bool        previewEnabled();
     virtual status_t    autoFocus(autofocus_callback, void *user);
     virtual status_t    takePicture(shutter_callback,
                                     raw_callback,
@@ -200,7 +201,7 @@ private:
     volatile qualcomm_camera_state mCameraState;
     static const char* const getCameraStateStr(qualcomm_camera_state s);
     qualcomm_camera_state change_state(qualcomm_camera_state new_state,
-                                       bool lock = false);
+                                       bool lock = true);
 
     void notifyShutter();
     void receiveJpegPictureFragment(JPEGENC_CBrtnType *encInfo);
@@ -234,6 +235,9 @@ private:
     int                 mPreviewFrameSize;
     int                 mRawSize;
     int                 mJpegMaxSize;
+
+    // hack to prevent black frame on first preview
+    int                 mPreviewCount;
 
 #if DLOPEN_LIBQCAMERA == 1
     void *libqcamera;

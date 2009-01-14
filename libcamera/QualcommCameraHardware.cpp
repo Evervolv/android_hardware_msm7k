@@ -18,7 +18,7 @@
 // -- replace Condition::wait with Condition::waitRelative
 // -- use read/write locks
 
-#define LOG_NDEBUG 0
+//#define LOG_NDEBUG 0
 #define LOG_TAG "QualcommCameraHardware"
 #include <utils/Log.h>
 #include <utils/threads.h>
@@ -53,9 +53,25 @@ static inline void print_time()
 #endif
 }
 
-#define DEFAULT_PREVIEW_WIDTH       480
-#define DEFAULT_PREVIEW_HEIGHT      320
-    
+typedef struct {
+    int width;
+    int height;
+} preview_size_type;
+
+// These sizes have to be a multiple of 16 in each dimension
+static preview_size_type preview_sizes[] = {
+    { 480, 320 }, // HVGA
+    { 432, 320 }, // 1.35-to-1, for photos. (Rounded up from 1.3333 to 1)
+    { 352, 288 }, // CIF
+    { 320, 240 }, // QVGA
+    { 240, 160 }, // SQVGA
+    { 176, 144 }, // QCIF
+};
+#define PREVIEW_SIZE_COUNT (sizeof(preview_sizes)/sizeof(preview_size_type))
+
+// default preview size is QVGA
+#define DEFAULT_PREVIEW_SETTING 0
+
 #define LIKELY( exp )       (__builtin_expect( (exp) != 0, true  ))
 #define UNLIKELY( exp )     (__builtin_expect( (exp) != 0, false ))
 
@@ -287,7 +303,8 @@ namespace android {
           mPreviewCallback(0),
           mPreviewCallbackCookie(0),
           mPreviewFrameSize(0),
-          mRawSize(0)
+          mRawSize(0),
+          mPreviewCount(0)
     {
         LOGV("constructor EX");
     }
@@ -296,9 +313,10 @@ namespace android {
     {
         CameraParameters p;
 
-        p.setPreviewSize(DEFAULT_PREVIEW_WIDTH, DEFAULT_PREVIEW_HEIGHT);
+        preview_size_type* ps = &preview_sizes[DEFAULT_PREVIEW_SETTING];
+        p.setPreviewSize(ps->width, ps->height);
         p.setPreviewFrameRate(15);
-        p.setPreviewFormat("yuv422sp");
+        p.setPreviewFormat("yuv420sp");
         p.setPictureFormat("jpeg"); // we do not look at this currently
         p.setPictureSize(2048, 1536);
         p.set("jpeg-quality", "100"); // maximum quality
@@ -307,7 +325,7 @@ namespace android {
         // screen we want to display at. 480x360 doesn't work either since it's a multiple of 8.
         p.set("jpeg-thumbnail-width", "512");
         p.set("jpeg-thumbnail-height", "384");
-        p.set("jpeg-thumbnail-quality", "30");
+        p.set("jpeg-thumbnail-quality", "90");
 
         p.set("nightshot-mode", "0"); // off
         p.set("luma-adaptation", "0"); // FIXME: turning it on causes a crash
@@ -540,7 +558,7 @@ namespace android {
         LOGV("initRaw: picture size=%dx%d",
              mRawWidth, mRawHeight);
 
-        // Note that we enforce yuv422 in setParameters().
+        // Note that we enforce yuv420 in setParameters().
 
         mRawSize =
             mRawWidth * mRawHeight * 3 / 2; /* reality */
@@ -693,6 +711,9 @@ namespace android {
             mStateWait.wait(mStateLock);
         }
 
+        // hack to prevent first preview frame from being black
+        mPreviewCount = 0;
+
         LOGV("startPreview X");
         return mCameraState == QCS_PREVIEW_IN_PROGRESS ?
             NO_ERROR : UNKNOWN_ERROR;
@@ -746,6 +767,10 @@ namespace android {
         Mutex::Autolock statelock(&mStateLock);
         stopPreviewInternal();
         LOGV("stopPreview: X");
+    }
+
+    bool QualcommCameraHardware::previewEnabled() {
+        return mCameraState == QCS_PREVIEW_IN_PROGRESS;
     }
 
     status_t QualcommCameraHardware::autoFocus(autofocus_callback af_cb,
@@ -910,8 +935,12 @@ namespace android {
         Mutex::Autolock lock(&mStateLock);
 
         // FIXME: verify params
-        if (strcmp(params.getPreviewFormat(), "yuv422sp") != 0) {
-            LOGE("Only yuv422sp preview is supported");
+        // yuv422sp is here only for legacy reason. Unfortunately, we release
+        // the code with yuv422sp as the default and enforced setting. The
+        // correct setting is yuv420sp.
+        if ((strcmp(params.getPreviewFormat(), "yuv420sp") != 0) &&
+                (strcmp(params.getPreviewFormat(), "yuv422sp") != 0)) {
+            LOGE("Only yuv420sp preview is supported");
             return INVALID_OPERATION;
         }
 
@@ -920,9 +949,20 @@ namespace android {
         
         mParameters = params;
         
-        /* libqcamera doesn't support any other size for the preview, so
-         * ignore the user's request */
-        mParameters.setPreviewSize(DEFAULT_PREVIEW_WIDTH, DEFAULT_PREVIEW_HEIGHT);
+        // libqcamera only supports certain size/aspect ratios
+        // find closest match that doesn't exceed app's request
+        int width, height;
+        params.getPreviewSize(&width, &height);
+        LOGV("requested size %d x %d", width, height);
+        preview_size_type* ps = preview_sizes;
+        size_t i;
+        for (i = 0; i < PREVIEW_SIZE_COUNT; ++i, ++ps) {
+            if (width >= ps->width && height >= ps->height) break;
+        }
+        // app requested smaller size than supported, use smallest size
+        if (i == PREVIEW_SIZE_COUNT) ps--;
+        LOGV("actual size %d x %d", ps->width, ps->height);
+        mParameters.setPreviewSize(ps->width, ps->height);
 
         mParameters.getPreviewSize(&mPreviewWidth, &mPreviewHeight);
         mParameters.getPictureSize(&mRawWidth, &mRawHeight);
@@ -1068,6 +1108,9 @@ namespace android {
     void QualcommCameraHardware::receivePreviewFrame(camera_frame_type *frame)
     {
         Mutex::Autolock cbLock(&mCallbackLock);
+
+        // ignore the first frame
+        if (++mPreviewCount == 1) return;
 
         if (mPreviewCallback == NULL) {
             LOGV("Preview callback was cancelled--not delivering frame.");
@@ -1459,9 +1502,12 @@ namespace android {
         if (th_q < 0) LOGW("property jpeg-thumbnail-quality not specified");
 
         if (th_w > 0 && th_h > 0 && th_q > 0) {
-            LOGI("setting thumbnail dimentions to %dx%d, quality %d",
+            LOGI("setting thumbnail dimensions to %dx%d, quality %d",
                  th_w, th_h, th_q);
-            LINK_camera_set_thumbnail_properties(th_w, th_h, th_q);
+            int ret = LINK_camera_set_thumbnail_properties(th_w, th_h, th_q);
+            if (ret != CAMERA_SUCCESS) {
+                LOGE("LINK_camera_set_thumbnail_properties returned %d", ret);
+            }
         }
 
 #if defined FEATURE_CAMERA_ENCODE_PROPERTIES
@@ -1473,7 +1519,7 @@ namespace android {
                  encode_properties.quality);
             encode_properties.quality = 100;
         }
-        else LOGV("Setting JPEG-image quality is %d",
+        else LOGV("Setting JPEG-image quality to %d",
                   encode_properties.quality);
         encode_properties.format    = CAMERA_JPEG;
         encode_properties.file_size = 0x0;
@@ -1581,7 +1627,7 @@ namespace android {
                 if (obj->mCameraState == QCS_INTERNAL_PREVIEW_REQUESTED) {
                     LOGV("@QCS_INTERNAL_PREVIEW_REQUESTED");
                 } else {
-                    obj->change_state(QCS_ERROR);
+                    TRANSITION_ALWAYS(QCS_ERROR);
                 }
             }
         }
@@ -1657,7 +1703,7 @@ namespace android {
                              obj->getCameraStateStr(obj->mCameraState));
                         obj->mRawPictureCallback(NULL, obj->mPictureCallbackCookie);
                         obj->mJpegPictureCallback(NULL, obj->mPictureCallbackCookie);
-                        obj->change_state(QCS_IDLE);
+                        TRANSITION_ALWAYS(QCS_IDLE);
                     }
                 }
                 break;
