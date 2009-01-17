@@ -22,7 +22,7 @@
 
 #include <utils/threads.h>
 
-#include <hardware/AudioHardwareBase.h>
+#include <hardware_legacy/AudioHardwareBase.h>
 
 extern "C" {
 #include <linux/msm_audio.h>
