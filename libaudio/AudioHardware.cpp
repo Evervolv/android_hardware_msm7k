@@ -1,22 +1,22 @@
 /*
 ** Copyright 2008, Google Inc.
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
 #include <math.h>
 
-// #define LOG_NDEBUG 0
+//#define LOG_NDEBUG 0
 #define LOG_TAG "AudioHardwareMSM72XX"
 #include <utils/Log.h>
 #include <utils/String8.h>
@@ -31,89 +31,89 @@
 
 // hardware specific functions
 
-#include "BluetoothHeadsetTable.h"
 #include "AudioHardware.h"
 
 #define LOG_SND_RPC 0  // Set to 1 to log sound RPC's
 
 namespace android {
-
-/* When this macro is non-zero, we initialize playback and recording
- * only once--when we construct the AudioHardwareMSM72xx class--and 
- * deinitialize them in this class' destructor.  When the macro is 
- * set to zero, we initialize playback and recording before we start
- * the respective operation, and deinitialize them after we stop that
- * operation.
- */
-#define INIT_AUDIO_ONCE (0)
-static int get_audpp_filter(void);
-static int msm72xx_enable_audpp(uint16_t enable_mask);
-
-static uint16_t adrc_flag;
-static uint16_t eq_flag;
-static uint16_t rx_iir_flag;
-static bool audpp_filter_inited = false;
-
+static int audpre_index, tx_iir_index;
+static void * acoustic;
+const uint32_t AudioHardware::inputSamplingRates[] = {
+        8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000
+};
 // ----------------------------------------------------------------------------
 
 AudioHardware::AudioHardware() :
-    mInit(false), mStandby(false), mOutputStandby(true),
-    mMicMute(true), mBluetoothNrec(true), mBluetoothId(0), mOutput(0),
-    mInput(0), mSndEndpoints(NULL),
+    mInit(false), mMicMute(true), mBluetoothNrec(true), mBluetoothId(0),
+    mOutput(0), mInput(0), mSndEndpoints(NULL),
     SND_DEVICE_CURRENT(-1),
     SND_DEVICE_HANDSET(-1),
-    SND_DEVICE_SPEAKER(-1),            
+    SND_DEVICE_SPEAKER(-1),
     SND_DEVICE_BT(-1),
     SND_DEVICE_BT_EC_OFF(-1),
     SND_DEVICE_HEADSET(-1),
     SND_DEVICE_HEADSET_AND_SPEAKER(-1)
 {
-    if (get_audpp_filter() == 0)
-        audpp_filter_inited = true;
 
-#if INIT_AUDIO_ONCE
-    if (msm72xx_init_record()) {
-        LOGE("msm72xx_init_record failed");
+    int (*snd_get_num)();
+    int (*snd_get_endpoint)(int, msm_snd_endpoint *);
+    int (*set_acoustic_parameters)();
+
+    struct msm_snd_endpoint *ept;
+
+    acoustic = ::dlopen("/system/lib/libhtc_acoustic.so", RTLD_NOW);
+    if (acoustic == NULL ) {
+        LOGE("Could not open libhtc_acoustic.so");
         return;
     }
-#endif
 
-    int fd = open("/dev/msm_snd", O_RDWR);
-    if (fd >= 0) {
-        int rc = ioctl(fd, SND_GET_NUM_ENDPOINTS,
-                       &mNumSndEndpoints);
-        if (rc >= 0) {
-            mSndEndpoints = new msm_snd_endpoint[mNumSndEndpoints];
-            mInit = true;
-            LOGV("constructed (%d SND endpoints)", rc);
-            struct msm_snd_endpoint *ept = mSndEndpoints;
-            for (int cnt = 0; cnt < mNumSndEndpoints; cnt++, ept++) {
-                ept->id = cnt;
-                ioctl(fd, SND_GET_ENDPOINT, ept);
-                LOGV("    %02: %s / %d", cnt, ept->name, ept->id);
-#define CHECK_FOR(desc) if (!strcmp(ept->name, #desc)) SND_DEVICE_##desc = ept->id;
-                CHECK_FOR(CURRENT);
-                CHECK_FOR(HANDSET);
-                CHECK_FOR(SPEAKER);
-                CHECK_FOR(BT);
-                CHECK_FOR(BT_EC_OFF);
-                CHECK_FOR(HEADSET);
-                CHECK_FOR(HEADSET_AND_SPEAKER);
-#undef CHECK_FOR
-                mBluetoothId = 0;
-                for (unsigned hs = 0; 
-                         hs < sizeof(KNOWN_HEADSETS)/sizeof(KNOWN_HEADSETS[0]);
-                         hs++) {
-                    if (KNOWN_HEADSETS[hs].id < 0 &&
-                            !strcmp(ept->name, KNOWN_HEADSETS[hs].probe))
-                        KNOWN_HEADSETS[hs].id = ept->id;
-                }
-            }
-        }
-        else LOGE("Could not retrieve number of MSM SND endpoints.");
-        close(fd);
+    set_acoustic_parameters = (int (*)(void))::dlsym(acoustic, "set_acoustic_parameters");
+    if ((*set_acoustic_parameters) == 0 ) {
+        LOGE("Could not open set_acoustic_parameters()");
+        return;
     }
-    else LOGE("Could not open MSM SND driver.");
+
+    int rc = set_acoustic_parameters();
+    if (rc < 0) {
+        LOGE("Could not set acoustic parameters to share memory: %d", rc);
+//        return;
+    }
+
+    snd_get_num = (int (*)(void))::dlsym(acoustic, "snd_get_num_endpoints");
+    if ((*snd_get_num) == 0 ) {
+        LOGE("Could not open snd_get_num()");
+//        return;
+    }
+
+    mNumSndEndpoints = snd_get_num();
+    LOGD("mNumSndEndpoints = %d", mNumSndEndpoints);
+    mSndEndpoints = new msm_snd_endpoint[mNumSndEndpoints];
+    mInit = true;
+    LOGV("constructed %d SND endpoints)", mNumSndEndpoints);
+    ept = mSndEndpoints;
+    snd_get_endpoint = (int (*)(int, msm_snd_endpoint *))::dlsym(acoustic, "snd_get_endpoint");
+    if ((*snd_get_endpoint) == 0 ) {
+        LOGE("Could not open snd_get_endpoint()");
+        return;
+    }
+
+    for (int cnt = 0; cnt < mNumSndEndpoints; cnt++, ept++) {
+        ept->id = cnt;
+        snd_get_endpoint(cnt, ept);
+#define CHECK_FOR(desc) \
+        if (!strcmp(ept->name, #desc)) { \
+            SND_DEVICE_##desc = ept->id; \
+            LOGD("BT MATCH " #desc); \
+        } else
+        CHECK_FOR(CURRENT)
+        CHECK_FOR(HANDSET)
+        CHECK_FOR(SPEAKER)
+        CHECK_FOR(BT)
+        CHECK_FOR(BT_EC_OFF)
+        CHECK_FOR(HEADSET)
+        CHECK_FOR(HEADSET_AND_SPEAKER) {}
+#undef CHECK_FOR
+    }
 }
 
 AudioHardware::~AudioHardware()
@@ -121,10 +121,7 @@ AudioHardware::~AudioHardware()
     delete mInput;
     delete mOutput;
     delete [] mSndEndpoints;
-
-#if INIT_AUDIO_ONCE
-    msm72xx_deinit_record();
-#endif
+    ::dlclose(acoustic);
     mInit = false;
 }
 
@@ -134,18 +131,26 @@ status_t AudioHardware::initCheck()
 }
 
 AudioStreamOut* AudioHardware::openOutputStream(
-        int format, int channelCount, uint32_t sampleRate)
+        int format, int channelCount, uint32_t sampleRate, status_t *status)
 {
     Mutex::Autolock lock(mLock);
 
     // only one output stream allowed
-    if (mOutput) return 0;
+    if (mOutput) {
+        if (status) {
+            *status = INVALID_OPERATION;
+        }
+        return 0;
+    }
 
     // create new output stream
     AudioStreamOutMSM72xx* out = new AudioStreamOutMSM72xx();
-    if (out->set(this, format, channelCount, sampleRate) == NO_ERROR) {
+    status_t lStatus = out->set(this, format, channelCount, sampleRate);
+    if (status) {
+        *status = lStatus;
+    }
+    if (lStatus == NO_ERROR) {
         mOutput = out;
-        standby_nosync();
     } else {
         delete out;
     }
@@ -163,20 +168,33 @@ void AudioHardware::closeOutputStream(AudioStreamOutMSM72xx* out) {
 }
 
 AudioStreamIn* AudioHardware::openInputStream(
-        int format, int channelCount, uint32_t sampleRate)
+        int format, int channelCount, uint32_t sampleRate, status_t *status,
+        AudioSystem::audio_in_acoustics acoustic_flags)
 {
-    Mutex::Autolock lock(mLock);
-
+    mLock.lock();
     // input stream already open?
-    if (mInput) return 0;
+    if (mInput) {
+        if (status) {
+            *status = INVALID_OPERATION;
+        }
+        mLock.unlock();
+        return 0;
+    }
 
     AudioStreamInMSM72xx* in = new AudioStreamInMSM72xx();
-    if (in->set(this, format, channelCount, sampleRate) != NO_ERROR) {
+    status_t lStatus = in->set(this, format, channelCount, sampleRate, acoustic_flags);
+    if (status) {
+        *status = lStatus;
+    }
+    if (lStatus != NO_ERROR) {
+        mLock.unlock();
         delete in;
         return 0;
     }
 
     mInput = in;
+    mLock.unlock();
+
     return mInput;
 }
 
@@ -190,30 +208,13 @@ void AudioHardware::closeInputStream(AudioStreamInMSM72xx* in) {
     }
 }
 
-// always call this with mutex held
-status_t AudioHardware::standby_nosync()
+bool AudioHardware::checkOutputStandby()
 {
-    if (mStandby == false) {
-        LOGD("Going to standby");
-        mStandby = true;
-        return mOutput->standby();
-    }
-    return NO_ERROR;
-}
+    if (mOutput)
+        if (!mOutput->checkStandby())
+            return false;
 
-// always call with mutex held
-status_t AudioHardware::checkStandby()
-{
-    // don't go into standby if audio is active
-    if (!mOutputStandby) return NO_ERROR;
-    return standby_nosync();
-}
-
-status_t AudioHardware::standby()
-{
-    Mutex::Autolock lock(mLock);
-    mOutputStandby = true;
-    return checkStandby();
+    return true;
 }
 
 status_t AudioHardware::setMicMute(bool state)
@@ -263,12 +264,9 @@ status_t AudioHardware::setParameter(const char *key, const char *value)
         doRouting();
     } else if (!strncmp(key, BT_NAME_KEY, sizeof(BT_NAME_KEY))) {
         mBluetoothId = 0;
-        for (uint32_t i = 0; i < sizeof(KNOWN_HEADSETS) / sizeof(KNOWN_HEADSETS[0]);
-                i++) {
-            if (!strncasecmp(value, KNOWN_HEADSETS[i].name,
-                             sizeof(KNOWN_HEADSETS[i].name)) &&
-                KNOWN_HEADSETS[i].id >= 0) {
-                mBluetoothId = KNOWN_HEADSETS[i].id;
+        for (int i = 0; i < mNumSndEndpoints; i++) {
+            if (!strcasecmp(value, mSndEndpoints[i].name)) {
+                mBluetoothId = mSndEndpoints[i].id;
                 LOGI("Using custom acoustic parameters for %s", value);
                 break;
             }
@@ -282,282 +280,37 @@ status_t AudioHardware::setParameter(const char *key, const char *value)
 
     return NO_ERROR;
 }
-
-int check_and_set_audpp_parameters(char *buf, int size)
+static unsigned calculate_audpre_table_index(unsigned index)
 {
-    char *p, *ps;
-    static const char *const seps = ",";
-    int table_num;
-    int i, j;
-    uint16_t adrc_filter[8];
-    eq_filter_type eq[12];
-    rx_iir_filter iir_cfg;
-    eqalizer eqalizer;
-    int fd;
-    void *audioeq;
-    void *(*eq_cal)(int32_t, int32_t, int32_t, uint16_t, int32_t, int32_t *, int32_t *, uint16_t *);
-    uint16_t numerator[6];
-    uint16_t denominator[4];
-    uint16_t shift[2];
-
-    fd = open("/dev/msm_pcm_ctl", O_RDWR);
-    if (fd < 0) {
-        LOGE("Cannot open audio device");
-        return -EPERM;
+    switch (index) {
+        case 48000:    return SAMP_RATE_INDX_48000;
+        case 44100:    return SAMP_RATE_INDX_44100;
+        case 32000:    return SAMP_RATE_INDX_32000;
+        case 24000:    return SAMP_RATE_INDX_24000;
+        case 22050:    return SAMP_RATE_INDX_22050;
+        case 16000:    return SAMP_RATE_INDX_16000;
+        case 12000:    return SAMP_RATE_INDX_12000;
+        case 11025:    return SAMP_RATE_INDX_11025;
+        case 8000:    return SAMP_RATE_INDX_8000;
+        default:     return -1;
     }
-    if (buf[0] == 'A' && buf[1] == '1') {
-        /* IIR filter */
-	if (!(p = strtok(buf, ",")))
-            goto token_err;
-	
-	/* Table header */	
-        table_num = strtol(p + 1, &ps, 10);
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-    	/* Table description */
-    	if (!(p = strtok(NULL, seps)))
-            goto token_err;
-
-	for (i = 0; i < 48; i++) {
-	    j = (i >= 40)? i : ((i % 2)? (i - 1) : (i + 1));
-            iir_cfg.iir_params[j] = (uint16_t)strtol(p, &ps, 16);
-	    if (!(p = strtok(NULL, seps)))
-                goto token_err;
-        }
-        rx_iir_flag = (uint16_t)strtol(p, &ps, 16);
-	if (!(p = strtok(NULL, seps)))
-            goto token_err;
-	iir_cfg.num_bands = (uint16_t)strtol(p, &ps, 16);
-	
-        if (ioctl(fd, AUDIO_SET_RX_IIR, &iir_cfg) < 0) {
-            LOGE("set rx iir filter error.");
-            return -EIO;
-        }
-    } else if (buf[0] == 'B' && buf[1] == '1') {
-        /* This is the ADRC record we are looking for.  Tokenize it */
-        if (!(p = strtok(buf, ",")))
-            goto token_err;
-
-        /* Table header */
-        table_num = strtol(p + 1, &ps, 10);
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-
-        /* Table description */
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        adrc_flag = (uint16_t)strtol(p, &ps, 16);
-
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        adrc_filter[0] = (uint16_t)strtol(p, &ps, 16);
-
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        adrc_filter[1] = (uint16_t)strtol(p, &ps, 16);
-
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        adrc_filter[2] = (uint16_t)strtol(p, &ps, 16);
-
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        adrc_filter[3] = (uint16_t)strtol(p, &ps, 16);
-
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        adrc_filter[4] = (uint16_t)strtol(p, &ps, 16);
-
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        adrc_filter[5] = (uint16_t)strtol(p, &ps, 16);
-
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        adrc_filter[6] = (uint16_t)strtol(p, &ps, 16);
-
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        adrc_filter[7] = (uint16_t)strtol(p, &ps, 16);
-
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-
-        LOGI("ADRC Filter ADRC FLAG = %02x.", adrc_flag);
-        LOGI("ADRC Filter COMP THRESHOLD = %02x.", adrc_filter[0]);
-        LOGI("ADRC Filter COMP SLOPE = %02x.", adrc_filter[1]);
-        LOGI("ADRC Filter COMP RMS TIME = %02x.", adrc_filter[2]);
-        LOGI("ADRC Filter COMP ATTACK[0] = %02x.", adrc_filter[3]);
-        LOGI("ADRC Filter COMP ATTACK[1] = %02x.", adrc_filter[4]);
-        LOGI("ADRC Filter COMP RELEASE[0] = %02x.", adrc_filter[5]);
-        LOGI("ADRC Filter COMP RELEASE[1] = %02x.", adrc_filter[6]);
-        LOGI("ADRC Filter COMP DELAY = %02x.", adrc_filter[7]);
-
-        if (ioctl(fd, AUDIO_SET_ADRC, &adrc_filter) < 0) {
-            LOGE("set adrc filter error.");
-            return -EIO;
-        }
-    } else if (buf[0] == 'C' && buf[1] == '1') {
-        /* This is the EQ record we are looking for.  Tokenize it */
-        if (!(p = strtok(buf, ",")))
-            goto token_err;
-
-        /* Table header */
-        table_num = strtol(p + 1, &ps, 10);
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        /* Table description */
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-
-        eq_flag = (uint16_t)strtol(p, &ps, 16);
-        if (!(p = strtok(NULL, seps)))
-            goto token_err;
-        LOGI("EQ flag = %02x.", eq_flag);
-
-        audioeq = ::dlopen("/system/lib/libaudioeq.so", RTLD_NOW);
-        if (audioeq == NULL) {
-            LOGE("audioeq library open failure");
-            return -1;
-        }
-        eq_cal = (void *(*) (int32_t, int32_t, int32_t, uint16_t, int32_t, int32_t *, int32_t *, uint16_t *))::dlsym(audioeq, "audioeq_calccoefs");
-        memset(&eqalizer, 0, sizeof(eqalizer));
-        /* Temp add the bands here */
-        eqalizer.bands = 8;
-        for (i = 0; i < eqalizer.bands; i++) {
-
-            eq[i].gain = (uint16_t)strtol(p, &ps, 16);
-
-            if (!(p = strtok(NULL, seps)))
-                goto token_err;
-            eq[i].freq = (uint16_t)strtol(p, &ps, 16);
-
-            if (!(p = strtok(NULL, seps)))
-                goto token_err;
-            eq[i].type = (uint16_t)strtol(p, &ps, 16);
-
-            if (!(p = strtok(NULL, seps)))
-                goto token_err;
-            eq[i].qf = (uint16_t)strtol(p, &ps, 16);
-
-            if (!(p = strtok(NULL, seps)))
-                goto token_err;
-            //LOGI("gain[%d] = %d", i, eq[i].gain);
-            //LOGI("freq[%d] = %d", i, eq[i].freq);
-            //LOGI("type[%d] = %d", i, eq[i].type);
-            //LOGI("  qf[%d] = %d", i, eq[i].qf);
-            eq_cal(eq[i].gain, eq[i].freq, 48000, eq[i].type, eq[i].qf, (int32_t*)numerator, (int32_t *)denominator, shift);
-            for (j = 0; j < 6; j++) {
-                eqalizer.params[ ( i * 6) + j] = numerator[j];
-            }
-            for (j = 0; j < 4; j++) {
-                eqalizer.params[(eqalizer.bands * 6) + (i * 4) + j] = denominator[j];
-            }
-            eqalizer.params[(eqalizer.bands * 10) + i] = shift[0];
-        }
-        ::dlclose(audioeq);
-
-        if (ioctl(fd, AUDIO_SET_EQ, &eqalizer) < 0) {
-            LOGE("set Equalizer error.");
-            return -EIO;
-        }
-    }
-    close(fd);
-    return 0;
-
-token_err:
-    LOGE("malformatted pcm control buffer");
-    return -EINVAL;
 }
-
-static int get_audpp_filter(void)
+size_t AudioHardware::getInputBufferSize(uint32_t sampleRate, int format, int channelCount)
 {
-    struct stat st;
-    char *read_buf;
-    char *next_str, *current_str;
-    int csvfd;
-
-    LOGI("get_audpp_filter");
-    static const char *const path = 
-        "/system/etc/AudioFilter.csv";
-    csvfd = open(path, O_RDONLY);
-    if (csvfd < 0) {
-        /* failed to open normal acoustic file ... */
-        LOGE("failed to open AUDIO_NORMAL_FILTER %s: %s (%d).",
-             path, strerror(errno), errno);
-        return -1;
-    } else LOGI("open %s success.", path);
-
-    if (fstat(csvfd, &st) < 0) {
-        LOGE("failed to stat %s: %s (%d).",
-             path, strerror(errno), errno);
-        close(csvfd);
-        return -1;
+    if (checkInputSampleRate(sampleRate) != NO_ERROR) {
+        LOGW("getInputBufferSize bad sampling rate: %d", sampleRate);
+        return 0;
+    }
+    if (format != AudioSystem::PCM_16_BIT) {
+        LOGW("getInputBufferSize bad format: %d", format);
+        return 0;
+    }
+    if (channelCount < 1 || channelCount > 2) {
+        LOGW("getInputBufferSize bad channel count: %d", channelCount);
+        return 0;
     }
 
-    read_buf = (char *) mmap(0, st.st_size,
-                    PROT_READ | PROT_WRITE,
-                    MAP_PRIVATE,
-                    csvfd, 0);
-    
-    if (read_buf == MAP_FAILED) {
-        LOGE("failed to mmap parameters file: %s (%d)",
-             strerror(errno), errno);
-        close(csvfd);
-        return -1;
-    }
-
-    current_str = read_buf;
-
-    while (1) {
-        int len;
-        next_str = strchr(current_str, '\n');
-        if (!next_str)
-           break;
-        len = next_str - current_str;
-        *next_str++ = '\0';
-        if (check_and_set_audpp_parameters(current_str, len)) {
-            LOGI("failed to set audpp parameters, exiting.");
-            munmap(read_buf, st.st_size);
-	    close(csvfd);
-	    return -1;
-        }
-        current_str = next_str;
-    }
-
-    munmap(read_buf, st.st_size);
-    close(csvfd);    
-    return 0;
-}
-
-static int msm72xx_enable_audpp(uint16_t enable_mask)
-{
-    int fd;
-
-    if (!audpp_filter_inited) return -EINVAL;
-    
-    fd = open("/dev/msm_pcm_ctl", O_RDWR);
-    if (fd < 0) {
-        LOGE("Cannot open audio device");
-        return -EPERM;
-    }
-
-    if (adrc_flag == 0 && (enable_mask & ADRC_ENABLE))
-       	enable_mask &= ~ADRC_ENABLE;
-    if (eq_flag == 0 && (enable_mask & EQ_ENABLE))
-	enable_mask &= ~EQ_ENABLE;
-    if (rx_iir_flag == 0 && (enable_mask & IIR_ENABLE))
-        enable_mask &= ~IIR_ENABLE;   
-	
-    LOGD("msm72xx_enable_audpp: 0x%04x", enable_mask);
-    if (ioctl(fd, AUDIO_ENABLE_AUDPP, &enable_mask) < 0) {
-        LOGE("enable audpp error");
-        close(fd);
-        return -EPERM;
-    }
-    
-    close(fd);
-    return 0;
+    return 2048*channelCount;
 }
 
 static status_t set_volume_rpc(uint32_t device,
@@ -585,19 +338,18 @@ static status_t set_volume_rpc(uint32_t device,
      *  )
      * rpc_snd_set_volume only works for in-call sound volume.
      */
-    struct msm_snd_volume_config args;
-    args.device = device;
-    args.method = method;
-    args.volume = volume;
+     struct msm_snd_volume_config args;
+     args.device = device;
+     args.method = method;
+     args.volume = volume;
 
-    if (ioctl(fd, SND_SET_VOLUME, &args) < 0) {
-        LOGE("snd_set_volume error.");
-        close(fd);
-        return -EIO;
-    }
-
-    close(fd);
-    return NO_ERROR;
+     if (ioctl(fd, SND_SET_VOLUME, &args) < 0) {
+         LOGE("snd_set_volume error.");
+         close(fd);
+         return -EIO;
+     }
+     close(fd);
+     return NO_ERROR;
 }
 
 status_t AudioHardware::setVoiceVolume(float v)
@@ -623,7 +375,6 @@ status_t AudioHardware::setMasterVolume(float v)
     Mutex::Autolock lock(mLock);
     int vol = ceil(v * 5.0);
     LOGI("Set master volume to %d.\n", vol);
-
     set_volume_rpc(SND_DEVICE_HANDSET, SND_METHOD_VOICE, vol);
     set_volume_rpc(SND_DEVICE_SPEAKER, SND_METHOD_VOICE, vol);
     set_volume_rpc(SND_DEVICE_BT,      SND_METHOD_VOICE, vol);
@@ -686,7 +437,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
         }
     }
     return do_route_audio_rpc(device,
-            mMode != AudioSystem::MODE_IN_CALL, mMicMute);
+                              mMode != AudioSystem::MODE_IN_CALL, mMicMute);
 }
 
 static int count_bits(uint32_t vector)
@@ -704,38 +455,36 @@ status_t AudioHardware::doRouting()
     uint32_t routes = mRoutes[mMode];
     if (count_bits(routes) > 1) {
         if (routes !=
-                (AudioSystem::ROUTE_HEADSET | AudioSystem::ROUTE_SPEAKER)) {
+            (AudioSystem::ROUTE_HEADSET | AudioSystem::ROUTE_SPEAKER)) {
             LOGW("Hardware does not support requested route combination (%#X),"
                  " picking closest possible route...", routes);
         }
     }
-
+    int (*msm72xx_enable_audpp)(int);
+    msm72xx_enable_audpp = (int (*)(int))::dlsym(acoustic, "msm72xx_enable_audpp");
     status_t ret = NO_ERROR;
-    if (routes & AudioSystem::ROUTE_BLUETOOTH) {
+    if (routes & AudioSystem::ROUTE_BLUETOOTH_SCO) {
         LOGI("Routing audio to Bluetooth PCM\n");
         ret = doAudioRouteOrMute(SND_DEVICE_BT);
-        msm72xx_enable_audpp(ADRC_DISABLE | EQ_DISABLE | IIR_DISABLE);
+        msm72xx_enable_audpp(ADRC_DISABLE | EQ_DISABLE | RX_IIR_DISABLE);
     } else if ((routes & AudioSystem::ROUTE_HEADSET) &&
                (routes & AudioSystem::ROUTE_SPEAKER)) {
         LOGI("Routing audio to Wired Headset and Speaker\n");
         ret = doAudioRouteOrMute(SND_DEVICE_HEADSET_AND_SPEAKER);
-        msm72xx_enable_audpp(ADRC_ENABLE | EQ_ENABLE | IIR_ENABLE);
+        msm72xx_enable_audpp(ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
     } else if (routes & AudioSystem::ROUTE_HEADSET) {
         LOGI("Routing audio to Wired Headset\n");
         ret = doAudioRouteOrMute(SND_DEVICE_HEADSET);
-        msm72xx_enable_audpp(ADRC_DISABLE | EQ_DISABLE | IIR_DISABLE);
+        msm72xx_enable_audpp(ADRC_DISABLE | EQ_DISABLE | RX_IIR_DISABLE);
     } else if (routes & AudioSystem::ROUTE_SPEAKER) {
         LOGI("Routing audio to Speakerphone\n");
         ret = doAudioRouteOrMute(SND_DEVICE_SPEAKER);
-        msm72xx_enable_audpp(ADRC_ENABLE | EQ_ENABLE | IIR_ENABLE);
+        msm72xx_enable_audpp(ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
     } else {
         LOGI("Routing audio to Handset\n");
         ret = doAudioRouteOrMute(SND_DEVICE_HANDSET);
-        msm72xx_enable_audpp(ADRC_DISABLE | EQ_DISABLE | IIR_DISABLE);
+        msm72xx_enable_audpp(ADRC_DISABLE | EQ_DISABLE | RX_IIR_DISABLE);
     }
-
-    // check for standby
-    checkStandby();
 
     return ret;
 }
@@ -746,7 +495,7 @@ status_t AudioHardware::checkMicMute()
     if (mMode != AudioSystem::MODE_IN_CALL) {
         setMicMute_nosync(true);
     }
-    
+
     return NO_ERROR;
 }
 
@@ -757,10 +506,6 @@ status_t AudioHardware::dumpInternals(int fd, const Vector<String16>& args)
     String8 result;
     result.append("AudioHardware::dumpInternals\n");
     snprintf(buffer, SIZE, "\tmInit: %s\n", mInit? "true": "false");
-    result.append(buffer);
-    snprintf(buffer, SIZE, "\tmStandby: %s\n", mStandby? "true": "false");
-    result.append(buffer);
-    snprintf(buffer, SIZE, "\tmOutputStandby: %s\n", mOutputStandby? "true": "false");
     result.append(buffer);
     snprintf(buffer, SIZE, "\tmMicMute: %s\n", mMicMute? "true": "false");
     result.append(buffer);
@@ -784,10 +529,20 @@ status_t AudioHardware::dump(int fd, const Vector<String16>& args)
     return NO_ERROR;
 }
 
+status_t AudioHardware::checkInputSampleRate(uint32_t sampleRate)
+{
+    for (uint32_t i = 0; i < sizeof(inputSamplingRates)/sizeof(uint32_t); i++) {
+        if (sampleRate == inputSamplingRates[i]) {
+            return NO_ERROR;
+        } 
+    }
+    return BAD_VALUE;
+}
+
 // ----------------------------------------------------------------------------
 
 AudioHardware::AudioStreamOutMSM72xx::AudioStreamOutMSM72xx() :
-    mHardware(0), mFd(-1), mStartCount(0), mRetryCount(0)
+    mHardware(0), mFd(-1), mStartCount(0), mRetryCount(0), mStandby(true)
 {
 }
 
@@ -812,9 +567,7 @@ status_t AudioHardware::AudioStreamOutMSM72xx::set(
 
 AudioHardware::AudioStreamOutMSM72xx::~AudioStreamOutMSM72xx()
 {
-    if (!mHardware->mStandby) {
-        if (mFd > 0) close(mFd);
-    }
+    if (mFd > 0) close(mFd);
     mHardware->closeOutputStream(this);
 }
 
@@ -825,14 +578,13 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
     size_t count = bytes;
     const uint8_t* p = static_cast<const uint8_t*>(buffer);
 
-    mHardware->mOutputStandby = false;
-    if (mHardware->mStandby) {
+    if (mStandby) {
 
         // open driver
         LOGV("open driver");
         status = ::open("/dev/msm_pcm_out", O_RDWR);
         if (status < 0) {
-            LOGE("Cannot open audio device");
+            LOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
             goto Error;
         }
         mFd = status;
@@ -850,7 +602,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         config.channel_count = channelCount();
         config.sample_rate = sampleRate();
         config.buffer_size = bufferSize();
-        config.buffer_count = 2;
+        config.buffer_count = AUDIO_HW_NUM_OUT_BUF;
         config.codec_type = CODEC_TYPE_PCM;
         status = ioctl(mFd, AUDIO_SET_CONFIG, &config);
         if (status < 0) {
@@ -864,8 +616,8 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         LOGV("sample_rate: %u", config.sample_rate);
 
         // fill 2 buffers before AUDIO_START
-        mStartCount = 2;
-        mHardware->mStandby = false;
+        mStartCount = AUDIO_HW_NUM_OUT_BUF;
+        mStandby = false;
     }
 
     while (count) {
@@ -894,7 +646,7 @@ Error:
         mFd = -1;
     }
     // Simulate audio output timing in case of error
-    usleep(bytes * 1000000 / sizeof(int16_t) / channelCount() / sampleRate());
+    usleep(bytes * 1000000 / frameSize() / sampleRate());
 
     return status;
 }
@@ -902,11 +654,11 @@ Error:
 status_t AudioHardware::AudioStreamOutMSM72xx::standby()
 {
     status_t status = NO_ERROR;
-    if (mFd > 0) {
+    if (!mStandby && mFd > 0) {
         ::close(mFd);
         mFd = -1;
     }
-    mHardware->mStandby = true;
+    mStandby = true;
     return status;
 }
 
@@ -932,19 +684,30 @@ status_t AudioHardware::AudioStreamOutMSM72xx::dump(int fd, const Vector<String1
     result.append(buffer);
     snprintf(buffer, SIZE, "\tmRetryCount: %d\n", mRetryCount);
     result.append(buffer);
+    snprintf(buffer, SIZE, "\tmStandby: %s\n", mStandby? "true": "false");
+    result.append(buffer);
     ::write(fd, result.string(), result.size());
     return NO_ERROR;
+}
+
+bool AudioHardware::AudioStreamOutMSM72xx::checkStandby()
+{
+    return mStandby;
 }
 
 // ----------------------------------------------------------------------------
 
 AudioHardware::AudioStreamInMSM72xx::AudioStreamInMSM72xx() :
-    mHardware(0), mFd(-1), mRecordEnabled(false), mRetryCount(0)
+    mHardware(0), mFd(-1), mState(AUDIO_INPUT_CLOSED), mRetryCount(0),
+    mFormat(AUDIO_HW_IN_FORMAT), mChannelCount(AUDIO_HW_IN_CHANNELS), 
+    mSampleRate(AUDIO_HW_IN_SAMPLERATE), mBufferSize(AUDIO_HW_IN_BUFFERSIZE),
+    mAcoustics((AudioSystem::audio_in_acoustics)0)
 {
 }
 
 status_t AudioHardware::AudioStreamInMSM72xx::set(
-        AudioHardware* hw, int format, int channelCount, uint32_t sampleRate)
+        AudioHardware* hw, int format, int channelCount, uint32_t sampleRate,
+        AudioSystem::audio_in_acoustics acoustic_flags)
 {
     LOGV("AudioStreamInMSM72xx::set(%d, %d, %u)", format, channelCount, sampleRate);
     if (mFd >= 0) {
@@ -955,7 +718,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     // open audio input device
     status_t status = ::open("/dev/msm_pcm_in", O_RDWR);
     if (status < 0) {
-        LOGE("Cannot open audio device");
+        LOGE("Cannot open /dev/msm_pcm_in errno: %d", errno);
         goto Error;
     }
     mFd = status;
@@ -992,9 +755,34 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     LOGV("channel_count: %u", config.channel_count);
     LOGV("sample_rate: %u", config.sample_rate);
 
+    mFormat = format;
+    mChannelCount = config.channel_count;
+    mSampleRate = config.sample_rate;
+    mBufferSize = config.buffer_size;
+
     mHardware = hw;
     mHardware->setMicMute_nosync(false);
-    mRecordEnabled = false;
+    mState = AUDIO_INPUT_OPENED;
+    audpre_index = calculate_audpre_table_index(sampleRate);
+    tx_iir_index = (audpre_index * 2) + (hw->checkOutputStandby() ? 0 : 1);
+    LOGD("audpre_index = %d, tx_iir_index = %d\n", audpre_index, tx_iir_index);
+
+    /**
+     * If audio-preprocessing failed, we should not block record.
+     */
+    int (*msm72xx_set_audpre_params)(int, int);
+    msm72xx_set_audpre_params = (int (*)(int, int))::dlsym(acoustic, "msm72xx_set_audpre_params");
+    status = msm72xx_set_audpre_params(audpre_index, tx_iir_index);
+    if (status < 0)
+        LOGE("Cannot set audpre parameters");
+
+    int (*msm72xx_enable_audpre)(int, int, int);
+    msm72xx_enable_audpre = (int (*)(int, int, int))::dlsym(acoustic, "msm72xx_enable_audpre");
+    mAcoustics = acoustic_flags;
+    status = msm72xx_enable_audpre((int)acoustic_flags, audpre_index, tx_iir_index);
+    if (status < 0)
+        LOGE("Cannot enable audpre");
+
     return NO_ERROR;
 
 Error:
@@ -1007,28 +795,33 @@ Error:
 
 AudioHardware::AudioStreamInMSM72xx::~AudioStreamInMSM72xx()
 {
-    LOGV("AudioHardware::closeRecord");
-    if (mFd < 0) return;
-    mHardware->checkMicMute();
-    ::close(mFd);
-    mRecordEnabled = false;
-    mHardware->closeInputStream(this);
+    LOGV("AudioStreamInMSM72xx destructor");
+    if (mHardware) {
+        standby();
+        mHardware->closeInputStream(this);
+    }
 }
 
 ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 {
     LOGV("AudioStreamInMSM72xx::read(%p, %u)", buffer, bytes);
-    if (mFd < 0) return NO_INIT;
+    if (!mHardware) return -1;
 
     size_t count = bytes;
     uint8_t* p = static_cast<uint8_t*>(buffer);
 
-    if (!mRecordEnabled) {
+    if (mState < AUDIO_INPUT_OPENED) {
+        if (set(mHardware, mFormat, mChannelCount, mSampleRate, mAcoustics) != NO_ERROR) {
+            return -1;
+        }
+    }
+    
+    if (mState < AUDIO_INPUT_STARTED) {
         if (ioctl(mFd, AUDIO_START, 0)) {
             LOGE("Error starting record");
             return -1;
         }
-        mRecordEnabled = 1;
+        mState = AUDIO_INPUT_STARTED;
     }
 
     while (count) {
@@ -1043,6 +836,20 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
         }
     }
     return bytes;
+}
+
+status_t AudioHardware::AudioStreamInMSM72xx::standby()
+{
+    if (!mHardware) return -1;
+    if (mState > AUDIO_INPUT_CLOSED) {
+        if (mFd > 0) {
+            ::close(mFd);
+            mFd = -1;
+        }
+        mHardware->checkMicMute();
+        mState = AUDIO_INPUT_CLOSED;
+    }
+    return NO_ERROR;
 }
 
 status_t AudioHardware::AudioStreamInMSM72xx::dump(int fd, const Vector<String16>& args)
@@ -1063,7 +870,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::dump(int fd, const Vector<String16
     result.append(buffer);
     snprintf(buffer, SIZE, "\tmFd count: %d\n", mFd);
     result.append(buffer);
-    snprintf(buffer, SIZE, "\tmRecordEnabled: %s\n", mRecordEnabled? "true": "false");
+    snprintf(buffer, SIZE, "\tmState: %d\n", mState);
     result.append(buffer);
     snprintf(buffer, SIZE, "\tmRetryCount: %d\n", mRetryCount);
     result.append(buffer);
