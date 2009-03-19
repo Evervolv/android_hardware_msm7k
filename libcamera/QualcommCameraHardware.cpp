@@ -1730,20 +1730,19 @@ namespace android {
             LOGE("camera object has been destroyed--returning immediately");
             return;
         }
-        
+
         if (cb == CAMERA_EXIT_CB_ABORT ||     /* Function aborted             */
             cb == CAMERA_EXIT_CB_DSP_ABORT || /* Abort due to DSP failure     */
             cb == CAMERA_EXIT_CB_ERROR ||     /* Failed due to resource       */
             cb == CAMERA_EXIT_CB_FAILED)      /* Execution failed or rejected */
         {
-            // TODO: notify client applications of the errors
-            LOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d) in state %s.",
-                 parm4,
-                 obj->getCameraStateStr(obj->mCameraState));
-            if (parm4 == CAMERA_ERROR_VIDEO_ENGINE &&
-                !(obj->mCameraState == QCS_INTERNAL_PREVIEW_REQUESTED ||
-                  obj->mCameraState == QCS_INTERNAL_PREVIEW_STOPPING)) {
-                    TRANSITION_ALWAYS(QCS_ERROR);
+            // Autofocus failures occur relatively often and are not fatal, so
+            // we do not transition to QCS_ERROR for them.
+            if (func != CAMERA_FUNC_START_FOCUS) {
+                LOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d) in state %s.",
+                     parm4,
+                     obj->getCameraStateStr(obj->mCameraState));
+                TRANSITION_ALWAYS(QCS_ERROR);
             }
         }
 
