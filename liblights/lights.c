@@ -92,13 +92,10 @@ handle_trackball_light_locked(struct light_device_t* dev)
 {
     int mode = 0;
 
-    if (g_backlight) {
-        mode = 0;
-    }
-    else if (g_attention) {
+    if (g_attention > 127) {
         mode = 3;
     }
-    else if (is_lit(&g_notification)) {
+    else if (!g_backlight && g_attention <= 127 && g_attention > 0) {
         mode = 7;
     }
 
@@ -128,7 +125,9 @@ set_light_backlight(struct light_device_t* dev,
     pthread_mutex_lock(&g_lock);
     g_backlight = brightness;
     err = write_int("/sys/class/leds/lcd-backlight/brightness", brightness);
-    handle_trackball_light_locked(dev);
+    if (g_haveTrackballLight) {
+        handle_trackball_light_locked(dev);
+    }
     pthread_mutex_unlock(&g_lock);
     return err;
 }
@@ -227,7 +226,7 @@ set_speaker_light_locked(struct light_device_t* dev,
 }
 
 static void
-handle_speaker_battery_fallback_locked(struct light_device_t* dev)
+handle_speaker_battery_locked(struct light_device_t* dev)
 {
     if (is_lit(&g_battery)) {
         set_speaker_light_locked(dev, &g_battery);
@@ -244,9 +243,8 @@ set_light_battery(struct light_device_t* dev,
     g_battery = *state;
     if (g_haveTrackballLight) {
         set_speaker_light_locked(dev, state);
-    } else {
-        handle_speaker_battery_fallback_locked(dev);
     }
+    handle_speaker_battery_locked(dev);
     pthread_mutex_unlock(&g_lock);
     return 0;
 }
@@ -261,9 +259,8 @@ set_light_notifications(struct light_device_t* dev,
             g_trackball, state->color);
     if (g_haveTrackballLight) {
         handle_trackball_light_locked(dev);
-    } else {
-        handle_speaker_battery_fallback_locked(dev);
     }
+    handle_speaker_battery_locked(dev);
     pthread_mutex_unlock(&g_lock);
     return 0;
 }
@@ -276,7 +273,7 @@ set_light_attention(struct light_device_t* dev,
     g_notification = *state;
     LOGV("set_light_attention g_trackball=%d color=0x%08x",
             g_trackball, state->color);
-    g_attention = is_lit(state);
+    g_attention = rgb_to_brightness(state);
     if (g_haveTrackballLight) {
         handle_trackball_light_locked(dev);
     }
