@@ -1,3 +1,6 @@
+/* Parts of this file are derived from the original Sun (ONC) RPC
+ * code, under the following copyright:
+ */
 /*
  * Sun RPC is a product of Sun Microsystems, Inc. and is provided for
  * unrestricted use provided that this legend is included on all tape
@@ -26,7 +29,6 @@
  * 2550 Garcia Avenue
  * Mountain View, California  94043
  */
-
 /*
  * svc.c, Server-side remote procedure call interface.
  *

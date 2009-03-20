@@ -31,11 +31,16 @@ class QualcommCameraHardware : public CameraHardwareInterface {
 public:
 
     virtual sp<IMemoryHeap> getPreviewHeap() const;
+    virtual sp<IMemoryHeap> getRawHeap() const;
 
     virtual status_t    dump(int fd, const Vector<String16>& args) const;
     virtual status_t    startPreview(preview_callback cb, void* user);
     virtual void        stopPreview();
     virtual bool        previewEnabled();
+    virtual status_t    startRecording(recording_callback cb, void* user);
+    virtual void        stopRecording();
+    virtual bool        recordingEnabled();
+    virtual void        releaseRecordingFrame(const sp<IMemory>& mem);
     virtual status_t    autoFocus(autofocus_callback, void *user);
     virtual status_t    takePicture(shutter_callback,
                                     raw_callback,
@@ -60,6 +65,8 @@ private:
 
     QualcommCameraHardware();
     virtual ~QualcommCameraHardware();
+    status_t startPreviewInternal(preview_callback pcb, void *puser,
+                                  recording_callback rcb, void *ruser);
     void stopPreviewInternal();
 
     static wp<QualcommCameraHardware> singleton;
@@ -178,12 +185,11 @@ private:
     // QualcommCameraHardware::startPreview(), and stay in until libqcamera
     // confirms that it has received the start-preview command (but not
     // actually initiated preview yet).
-
+    //
     // NOTE: keep those values small; they are used internally as indices
     //       into a array of strings.
     // NOTE: if you add to this enumeration, make sure you update
     //       getCameraStateStr().
-    //
 
     enum qualcomm_camera_state {
         QCS_INIT,
@@ -195,7 +201,8 @@ private:
         /* internal states */
         QCS_INTERNAL_PREVIEW_STOPPING,
         QCS_INTERNAL_PREVIEW_REQUESTED,
-        QCS_INTERNAL_RAW_REQUESTED
+        QCS_INTERNAL_RAW_REQUESTED,
+        QCS_INTERNAL_STOPPING,
     };
 
     volatile qualcomm_camera_state mCameraState;
@@ -206,9 +213,11 @@ private:
     void notifyShutter();
     void receiveJpegPictureFragment(JPEGENC_CBrtnType *encInfo);
 
+    void receivePostLpmRawPicture(camera_frame_type *frame);
     void receiveRawPicture(camera_frame_type *frame);
     void receiveJpegPicture(void);
 
+    Mutex mLock; // API lock -- all public methods
     Mutex mCallbackLock;
     Mutex mStateLock;
     Condition mStateWait;
@@ -232,6 +241,11 @@ private:
 
     preview_callback    mPreviewCallback;
     void                *mPreviewCallbackCookie;
+    recording_callback  mRecordingCallback;
+    void                *mRecordingCallbackCookie;
+    bool setCallbacks(preview_callback pcb, void *pu,
+                      recording_callback rcb, void *ru);
+
     int                 mPreviewFrameSize;
     int                 mRawSize;
     int                 mJpegMaxSize;

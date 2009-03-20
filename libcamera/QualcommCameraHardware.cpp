@@ -128,7 +128,6 @@ static preview_size_type preview_sizes[] = {
 #define LINK_camera_stop                   camera_stop
 #define LINK_camera_stop_preview           camera_stop_preview
 #define LINK_camera_take_picture           camera_take_picture
-#define LINK_camera_release_encode_buf     camera_release_encode_buf
 #define LINK_rex_shutdown                  rex_shutdown
 #define LINK_rex_start                     rex_start
 #define LINK_rex_signal_ready              rex_signal_ready
@@ -184,9 +183,6 @@ static preview_size_type preview_sizes[] = {
         camera_handle_type *handle,
         camera_cb_f_type callback,
         void *client_data);
-
-    void (*LINK_camera_release_encode_buf) (
-        void *buf);
 
     void (*LINK_camera_init)(void);
 
@@ -302,6 +298,8 @@ namespace android {
           mAutoFocusCallbackCookie(0),
           mPreviewCallback(0),
           mPreviewCallbackCookie(0),
+          mRecordingCallback(0),
+          mRecordingCallbackCookie(0),
           mPreviewFrameSize(0),
           mRawSize(0),
           mPreviewCount(0)
@@ -381,8 +379,6 @@ namespace android {
                 ::dlsym(libqcamera, "clear_module_pmem");
             *(void **)&LINK_camera_release_pmem =
                 ::dlsym(libqcamera, "camera_release_pmem");
-            *(void **)&LINK_camera_release_encode_buf =
-                ::dlsym(libqcamera, "camera_release_encode_buf");
             *(void **)&LINK_camera_encode_picture =
                 ::dlsym(libqcamera, "camera_encode_picture");
             *(void **)&LINK_camera_init =
@@ -476,7 +472,8 @@ namespace android {
         String8 result;
         
         // Dump internal primitives.
-        result.append("QualcommCameraHardware::dump: state (%d)\n", mCameraState);
+        snprintf(buffer, 255, "QualcommCameraHardware::dump: state (%d)\n", mCameraState);
+        result.append(buffer);
         snprintf(buffer, 255, "preview width(%d) x height (%d)\n", mPreviewWidth, mPreviewHeight);
         result.append(buffer);
         snprintf(buffer, 255, "raw width(%d) x height (%d)\n", mRawWidth, mRawHeight);
@@ -565,7 +562,7 @@ namespace android {
 
         mJpegMaxSize = mRawWidth * mRawHeight * 2;
 
-        LOGE("initRaw: clearing old mJpegHeap.");
+        LOGD("initRaw: clearing old mJpegHeap.");
         mJpegHeap = NULL;
 
         LOGV("initRaw: initializing mRawHeap.");
@@ -607,26 +604,38 @@ namespace android {
     {
         LOGV("release E");
 
-        Mutex::Autolock singletonLock(&singleton_lock);
-        Mutex::Autolock lock(&mStateLock);
+        Mutex::Autolock l(&mLock);
 
         // Either preview was ongoing, or we are in the middle or taking a
         // picture.  It's the caller's responsibility to make sure the camera
         // is in the idle or init state before destroying this object.
 
-        if (mCameraState != QCS_IDLE &&
-            mCameraState != QCS_INIT) {
-            LOGV("Serious error: the camera state is %s, not QCS_IDLE or QCS_INIT!",
+        if (mCameraState != QCS_IDLE && mCameraState != QCS_INIT) {
+            LOGE("Serious error: the camera state is %s, "
+                 "not QCS_IDLE or QCS_INIT!",
                  getCameraStateStr(mCameraState));
         }
-
+        
+        mStateLock.lock();
         if (mCameraState != QCS_INIT) {
+            // When libqcamera detects an error, it calls camera_cb from the
+            // call to LINK_camera_stop, which would cause a deadlock if we
+            // held the mStateLock.  For this reason, we have an intermediate
+            // state QCS_INTERNAL_STOPPING, which we use to check to see if the
+            // camera_cb was called inline.
+            mCameraState = QCS_INTERNAL_STOPPING;
+            mStateLock.unlock();
+
             LOGV("stopping camera.");
             LINK_camera_stop(stop_camera_cb, this);
-            while (mCameraState != QCS_INIT &&
-                   mCameraState != QCS_ERROR) {
-                LOGV("stopping camera: waiting for QCS_INIT");
-                mStateWait.wait(mStateLock);
+
+            mStateLock.lock();
+            if (mCameraState == QCS_INTERNAL_STOPPING) {
+                while (mCameraState != QCS_INIT &&
+                       mCameraState != QCS_ERROR) {
+                    LOGV("stopping camera: waiting for QCS_INIT");
+                    mStateWait.wait(mStateLock);
+                }
             }
 
             LOGV("Shutting REX down.");
@@ -637,10 +646,10 @@ namespace android {
                 unsigned ref = ::dlclose(libqcamera);
                 LOGV("dlclose(libqcamera) refcount %d", ref);
             }
-
 #endif
             mCameraState = QCS_INIT;
         }
+        mStateLock.unlock();
 
         LOGV("release X");
     }
@@ -648,6 +657,7 @@ namespace android {
     QualcommCameraHardware::~QualcommCameraHardware()
     {
         LOGV("~QualcommCameraHardware E");
+        Mutex::Autolock singletonLock(&singleton_lock);
         singleton.clear();
         LOGV("~QualcommCameraHardware X");
     }
@@ -658,15 +668,35 @@ namespace android {
         return mPreviewHeap != NULL ? mPreviewHeap->mHeap : NULL;
     }
 
-    status_t QualcommCameraHardware::startPreview(preview_callback cb,
-                   void* user)
+    sp<IMemoryHeap> QualcommCameraHardware::getRawHeap() const
+    {
+        return mRawHeap != NULL ? mRawHeap->mHeap : NULL;
+    }
+
+    bool QualcommCameraHardware::setCallbacks(
+        preview_callback pcb, void *puser,
+        recording_callback rcb, void *ruser)
+    {
+        Mutex::Autolock cbLock(&mCallbackLock);
+        mPreviewCallback = pcb;
+        mPreviewCallbackCookie = puser;
+        mRecordingCallback = rcb;
+        mRecordingCallbackCookie = ruser;
+        return mPreviewCallback != NULL ||
+            mRecordingCallback != NULL;
+    }
+
+    status_t QualcommCameraHardware::startPreviewInternal(
+        preview_callback pcb, void *puser,
+        recording_callback rcb, void *ruser)
     {
         LOGV("startPreview E");
 
-        Mutex::Autolock stateLock(&mStateLock);
-
         if (mCameraState == QCS_PREVIEW_IN_PROGRESS) {
             LOGE("startPreview is already in progress, doing nothing.");
+            // We might want to change the callback functions while preview is
+            // streaming, for example to enable or disable recording.
+            setCallbacks(pcb, puser, rcb, ruser);
             return NO_ERROR;
         }
 
@@ -675,7 +705,7 @@ namespace android {
         // callback, but before we've updated the state from QCS_WAITING_RAW
         // or QCS_WAITING_JPEG to QCS_IDLE.  This is because in camera_cb(),
         // we update the state *after* we've made the callback.  See that
-        // function for an explanation why.
+        // function for an explanation.
 
         if (mCameraState == QCS_WAITING_RAW ||
             mCameraState == QCS_WAITING_JPEG) {
@@ -697,18 +727,24 @@ namespace android {
             return UNKNOWN_ERROR;
         }
 
-        {
-            Mutex::Autolock cbLock(&mCallbackLock);
-            mPreviewCallback = cb;
-            mPreviewCallbackCookie = user;
-        }
+        setCallbacks(pcb, puser, rcb, ruser);
+
+        // hack to prevent first preview frame from being black
+        mPreviewCount = 0;
 
         mCameraState = QCS_INTERNAL_PREVIEW_REQUESTED;
-        LINK_camera_start_preview(camera_cb, this);
-        while(mCameraState != QCS_PREVIEW_IN_PROGRESS &&
-              mCameraState != QCS_ERROR) {
-            LOGV("waiting for QCS_PREVIEW_IN_PROGRESS");
-            mStateWait.wait(mStateLock);
+        camera_ret_code_type qret =
+            LINK_camera_start_preview(camera_cb, this);
+        if (qret == CAMERA_SUCCESS) {
+            while(mCameraState != QCS_PREVIEW_IN_PROGRESS &&
+                  mCameraState != QCS_ERROR) {
+                LOGV("waiting for QCS_PREVIEW_IN_PROGRESS");
+                mStateWait.wait(mStateLock);
+            }
+        }
+        else {
+            LOGE("startPreview failed: sensor error.");
+            mCameraState = QCS_ERROR;
         }
 
         // hack to prevent first preview frame from being black
@@ -739,11 +775,7 @@ namespace android {
             LINK_camera_stop_focus();
         }
 
-        {
-            Mutex::Autolock cbLock(&mCallbackLock);
-            mPreviewCallback = NULL;
-            mPreviewCallbackCookie = NULL;
-        }
+        setCallbacks(NULL, NULL, NULL, NULL);
         
         mCameraState = QCS_INTERNAL_PREVIEW_STOPPING;
 
@@ -761,22 +793,74 @@ namespace android {
         LOGV("stopPreviewInternal: X Preview has stopped.");
     }
 
+    status_t QualcommCameraHardware::startPreview(
+        preview_callback pcb, void *puser)
+    {
+        Mutex::Autolock l(&mLock);
+        Mutex::Autolock stateLock(&mStateLock);
+        return startPreviewInternal(pcb, puser,
+                                    mRecordingCallback,
+                                    mRecordingCallbackCookie);
+    }
 
     void QualcommCameraHardware::stopPreview() {
         LOGV("stopPreview: E");
-        Mutex::Autolock statelock(&mStateLock);
-        stopPreviewInternal();
+        Mutex::Autolock l(&mLock);
+        if (!setCallbacks(NULL, NULL,
+                          mRecordingCallback,
+                          mRecordingCallbackCookie)) {
+            Mutex::Autolock statelock(&mStateLock);
+            stopPreviewInternal();
+        }
         LOGV("stopPreview: X");
     }
 
     bool QualcommCameraHardware::previewEnabled() {
+        Mutex::Autolock l(&mLock);
         return mCameraState == QCS_PREVIEW_IN_PROGRESS;
+    }
+
+    status_t QualcommCameraHardware::startRecording(
+        recording_callback rcb, void *ruser)
+    {
+        Mutex::Autolock l(&mLock);
+        Mutex::Autolock stateLock(&mStateLock);
+        return startPreviewInternal(mPreviewCallback,
+                                    mPreviewCallbackCookie,
+                                    rcb, ruser);
+    }
+
+    void QualcommCameraHardware::stopRecording() {
+        LOGV("stopRecording: E");
+        Mutex::Autolock l(&mLock);
+        if (!setCallbacks(mPreviewCallback,
+                          mPreviewCallbackCookie,
+                          NULL, NULL)) {
+            Mutex::Autolock statelock(&mStateLock);
+            stopPreviewInternal();
+        }
+        LOGV("stopRecording: X");
+    }
+
+    bool QualcommCameraHardware::recordingEnabled() {
+        Mutex::Autolock l(&mLock);
+        Mutex::Autolock stateLock(&mStateLock);
+        return mCameraState == QCS_PREVIEW_IN_PROGRESS &&
+            mRecordingCallback != NULL;
+    }
+
+    void QualcommCameraHardware::releaseRecordingFrame(
+        const sp<IMemory>& mem __attribute__((unused)))
+    {
+        Mutex::Autolock l(&mLock);
+        LINK_camera_release_frame();
     }
 
     status_t QualcommCameraHardware::autoFocus(autofocus_callback af_cb,
                                                void *user)
     {
         LOGV("Starting auto focus.");
+        Mutex::Autolock l(&mLock);
         Mutex::Autolock lock(&mStateLock);
 
         if (mCameraState != QCS_PREVIEW_IN_PROGRESS) {
@@ -806,6 +890,7 @@ namespace android {
              raw_cb, jpeg_cb);
         print_time();
 
+        Mutex::Autolock l(&mLock);
         Mutex::Autolock stateLock(&mStateLock);
 
         qualcomm_camera_state last_state = mCameraState;
@@ -896,6 +981,7 @@ namespace android {
     {
         LOGV("cancelPicture: E cancel_shutter = %d, cancel_raw = %d, cancel_jpeg = %d",
              cancel_shutter, cancel_raw, cancel_jpeg);
+        Mutex::Autolock l(&mLock);
         Mutex::Autolock stateLock(&mStateLock);
 
         switch (mCameraState) {
@@ -932,6 +1018,7 @@ namespace android {
     {
         LOGV("setParameters: E params = %p", &params);
 
+        Mutex::Autolock l(&mLock);
         Mutex::Autolock lock(&mStateLock);
 
         // FIXME: verify params
@@ -1000,11 +1087,13 @@ namespace android {
     {
         LOGV("createInstance: E");
 
-        Mutex::Autolock lock(&singleton_lock);
+        singleton_lock.lock();
         if (singleton != 0) {
             sp<CameraHardwareInterface> hardware = singleton.promote();
             if (hardware != 0) {
-                LOGV("createInstance: X return existing hardware=%p", &(*hardware));
+                LOGV("createInstance: X return existing hardware=%p",
+                     &(*hardware));
+                singleton_lock.unlock();
                 return hardware;
             }
         }
@@ -1013,7 +1102,9 @@ namespace android {
             struct stat st;
             int rc = stat("/dev/oncrpc", &st);
             if (rc < 0) {
-                LOGV("createInstance: X failed to create hardware: %s", strerror(errno));
+                LOGV("createInstance: X failed to create hardware: %s",
+                     strerror(errno));
+                singleton_lock.unlock();
                 return NULL;
             }
         }
@@ -1021,6 +1112,8 @@ namespace android {
         QualcommCameraHardware *cam = new QualcommCameraHardware();
         sp<QualcommCameraHardware> hardware(cam);
         singleton = hardware;
+        singleton_lock.unlock();
+
         // initDefaultParameters() will cause the camera_cb() to be called.
         // Since the latter tries to promote the singleton object to make sure
         // it still exists, we need to call this function after we have set the
@@ -1033,14 +1126,12 @@ namespace android {
     // For internal use only, hence the strong pointer to the derived type.
     sp<QualcommCameraHardware> QualcommCameraHardware::getInstance()
     {
+        Mutex::Autolock singletonLock(&singleton_lock);
         sp<CameraHardwareInterface> hardware = singleton.promote();
-        if (hardware != 0) {
-            LOGV("getInstance: X old instance of hardware");
-            return sp<QualcommCameraHardware>(static_cast<QualcommCameraHardware*>(hardware.get()));
-        } else {
-            LOGV("getInstance: X new instance of hardware");
-            return sp<QualcommCameraHardware>();
-        }
+        return (hardware != 0) ?
+            sp<QualcommCameraHardware>(static_cast<QualcommCameraHardware*>
+                                       (hardware.get())) :
+            NULL;
     }
 
     void* QualcommCameraHardware::get_preview_mem(uint32_t size,
@@ -1109,11 +1200,10 @@ namespace android {
     {
         Mutex::Autolock cbLock(&mCallbackLock);
 
-        // ignore the first frame
-        if (++mPreviewCount == 1) return;
-
-        if (mPreviewCallback == NULL) {
-            LOGV("Preview callback was cancelled--not delivering frame.");
+        // Ignore the first frame--there is a bug in the VFE pipeline and that
+        // frame may be bad.
+        if (++mPreviewCount == 1) {
+            LINK_camera_release_frame();
             return;
         }
 
@@ -1140,8 +1230,26 @@ namespace android {
                  mPreviewFrameSize, frame->header_size);
 #endif
             offset /= frame_size;
-            mPreviewCallback(mPreviewHeap->mBuffers[offset],
-                             mPreviewCallbackCookie);
+            if (mPreviewCallback != NULL)
+                mPreviewCallback(mPreviewHeap->mBuffers[offset],
+                                 mPreviewCallbackCookie);
+            if (mRecordingCallback != NULL)
+                mRecordingCallback(mPreviewHeap->mBuffers[offset],
+                                   mRecordingCallbackCookie);
+            else {
+                // When we are doing preview but not recording, we need to
+                // release every preview frame immediately so that the next
+                // preview frame is delivered.  However, when we are recording
+                // (whether or not we are also streaming the preview frames to
+                // the screen), we have the user explicitly release a preview
+                // frame via method releaseRecordingFrame().  In this way we
+                // allow a video encoder which is potentially slower than the
+                // preview stream to skip frames.  Note that we call
+                // LINK_camera_release_frame() in this method because we first
+                // need to check to see if mPreviewCallback != NULL, which
+                // requires holding mCallbackLock.
+                LINK_camera_release_frame();
+            }
         }
         else LOGE("Preview frame virtual address %p is out of range!",
                   frame->buf_Virt_Addr);
@@ -1159,15 +1267,13 @@ namespace android {
         LOGV("notifyShutter: X");
     }
 
+    // Pass the pre-LPM raw picture to raw picture callback.
     // This method is called by a libqcamera thread, different from the one on
     // which startPreview() or takePicture() are called.
-
-    void
-    QualcommCameraHardware::receiveRawPicture(camera_frame_type *frame)
+    void QualcommCameraHardware::receiveRawPicture(camera_frame_type *frame)
     {
         LOGV("receiveRawPicture: E");
         print_time();
-        qualcomm_camera_state new_state = QCS_ERROR;
 
         Mutex::Autolock cbLock(&mCallbackLock);
 
@@ -1210,6 +1316,23 @@ namespace android {
                       frame->buf_Virt_Addr);
         }
         else LOGV("Raw-picture callback was canceled--skipping.");
+
+        print_time();
+        LOGV("receiveRawPicture: X");
+    }
+
+    // Encode the post-LPM raw picture.
+    // This method is called by a libqcamera thread, different from the one on
+    // which startPreview() or takePicture() are called.
+
+    void
+    QualcommCameraHardware::receivePostLpmRawPicture(camera_frame_type *frame)
+    {
+        LOGV("receivePostLpmRawPicture: E");
+        print_time();
+        qualcomm_camera_state new_state = QCS_ERROR;
+
+        Mutex::Autolock cbLock(&mCallbackLock);
 
         if (mJpegPictureCallback != NULL) {
 
@@ -1265,7 +1388,6 @@ namespace android {
                 camera_handle.mem.encBuf[cnt].buf_len =
                     MAX_JPEG_ENCODE_BUF_LEN;
                 camera_handle.mem.encBuf[cnt].used_len = 0;
-                camera_handle.mem.encBuf[cnt].valid = 1;
             } /* for */
 
             LINK_camera_encode_picture(frame, &camera_handle, camera_cb, this);
@@ -1278,7 +1400,7 @@ namespace android {
             mRawHeap = NULL;
         }                    
         print_time();
-        LOGV("receiveRawPicture: X");
+        LOGV("receivePostLpmRawPicture: X");
     }
 
     void
@@ -1306,11 +1428,9 @@ namespace android {
             size = remaining;
         }
 
-        camera_handle.mem.encBuf[index].valid = 1;
         camera_handle.mem.encBuf[index].used_len = 0;
         memcpy(base + mJpegSize, enc->buffer, size);
         mJpegSize += size;
-        LINK_camera_release_encode_buf(encInfo);
     }
 
     // This method is called by a libqcamera thread, different from the one on
@@ -1561,12 +1681,12 @@ namespace android {
             // transition on mStateWait.  That's why we signal(), not
             // broadcast().
 
-            LOGV("camera_cb: state transition %s --> %s",
+            LOGV("state transition %s --> %s",
                  getCameraStateStr(mCameraState),
                  getCameraStateStr(new_state));
 
             mCameraState = new_state;
-            mStateWait.broadcast();
+            mStateWait.signal();
         }
         if (lock) mStateLock.unlock();
         return new_state;
@@ -1592,7 +1712,7 @@ namespace android {
             (QualcommCameraHardware *)client_data;
         switch(func) {
             CAMERA_STATE(CAMERA_FUNC_STOP)
-                TRANSITION(QCS_IDLE, QCS_INIT);
+                TRANSITION(QCS_INTERNAL_STOPPING, QCS_INIT);
             break;
         default:
             break;
@@ -1607,11 +1727,9 @@ namespace android {
         QualcommCameraHardware *obj =
             (QualcommCameraHardware *)client_data;
 
-        // Promote the singleton to make sure that we do not get destroyed while this
-        // callback is executing.
-        sp<CameraHardwareInterface> p =
-            singleton.promote();
-        if (UNLIKELY(p == 0)) {
+        // Promote the singleton to make sure that we do not get destroyed
+        // while this callback is executing.
+        if (UNLIKELY(getInstance() == NULL)) {
             LOGE("camera object has been destroyed--returning immediately");
             return;
         }
@@ -1622,13 +1740,13 @@ namespace android {
             cb == CAMERA_EXIT_CB_FAILED)      /* Execution failed or rejected */
         {
             // TODO: notify client applications of the errors
-            LOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d).", parm4);
-            if (parm4 == CAMERA_ERROR_VIDEO_ENGINE) {
-                if (obj->mCameraState == QCS_INTERNAL_PREVIEW_REQUESTED) {
-                    LOGV("@QCS_INTERNAL_PREVIEW_REQUESTED");
-                } else {
+            LOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d) in state %s.",
+                 parm4,
+                 obj->getCameraStateStr(obj->mCameraState));
+            if (parm4 == CAMERA_ERROR_VIDEO_ENGINE &&
+                !(obj->mCameraState == QCS_INTERNAL_PREVIEW_REQUESTED ||
+                  obj->mCameraState == QCS_INTERNAL_PREVIEW_STOPPING)) {
                     TRANSITION_ALWAYS(QCS_ERROR);
-                }
             }
         }
 
@@ -1655,7 +1773,9 @@ namespace android {
                              obj->getCameraStateStr(obj->mCameraState));
                         break;
                     }
+/* -- this function is called now inside of receivePreviewFrame.
                     LINK_camera_release_frame();
+*/
                     break;
                 default:
                     // transition to QCS_ERROR
@@ -1668,7 +1788,7 @@ namespace android {
                 break;
 /* -- this case handled in stop_camera_cb() now.
             CAMERA_STATE(CAMERA_FUNC_STOP)
-                TRANSITION(QCS_IDLE, QCS_INIT);
+                TRANSITION(QCS_INTERNAL_STOPPING, QCS_INIT);
                 break;
 */
             CAMERA_STATE(CAMERA_FUNC_STOP_PREVIEW)
@@ -1680,16 +1800,19 @@ namespace android {
                     TRANSITION(QCS_INTERNAL_RAW_REQUESTED,
                                QCS_WAITING_RAW);
                 }
-                else if (cb == CAMERA_EVT_CB_SNAPSHOT_DONE)
+                else if (cb == CAMERA_EVT_CB_SNAPSHOT_DONE) {
                     obj->notifyShutter();
+                    // Received pre-LPM raw picture. Notify callback now.
+                    obj->receiveRawPicture((camera_frame_type *)parm4);
+                }
                 else if (cb == CAMERA_EXIT_CB_DONE) {
                     // It's important that we call receiveRawPicture() before
                     // we transition the state because another thread may be
                     // waiting in cancelPicture(), and then delete this object.
                     // If the order were reversed, we might call
                     // receiveRawPicture on a dead object.
-                    LOGV("Receiving picture.");
-                    obj->receiveRawPicture((camera_frame_type *)parm4);
+                    LOGV("Receiving post LPM raw picture.");
+                    obj->receivePostLpmRawPicture((camera_frame_type *)parm4);
                     {
                         Mutex::Autolock lock(&obj->mStateLock);
                         TRANSITION_LOCKED(QCS_WAITING_RAW,
@@ -1907,7 +2030,7 @@ namespace android {
                 return;
             }
             
-            LOGE("pmem pool %s ioctl(PMEM_GET_SIZE) is %ld",
+            LOGV("pmem pool %s ioctl(PMEM_GET_SIZE) is %ld",
                  pmem_pool,
                  mSize.len);
             
@@ -2101,6 +2224,7 @@ namespace android {
             STATE_STR(QCS_INTERNAL_PREVIEW_STOPPING),
             STATE_STR(QCS_INTERNAL_PREVIEW_REQUESTED),
             STATE_STR(QCS_INTERNAL_RAW_REQUESTED),
+            STATE_STR(QCS_INTERNAL_STOPPING),
 #undef STATE_STR
         };
         return states[s];

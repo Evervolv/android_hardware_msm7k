@@ -1,3 +1,6 @@
+
+ifneq ($(BUILD_TINY_ANDROID),true)
+
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
@@ -7,7 +10,7 @@ LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libutils \
     libmedia \
-    libhardware
+    libhardware_legacy
 
 ifeq ($TARGET_OS)-$(TARGET_SIMULATOR),linux-true)
 LOCAL_LDLIBS += -ldl
@@ -24,4 +27,6 @@ LOCAL_CFLAGS += -fno-short-enums
 LOCAL_STATIC_LIBRARIES += libaudiointerface
 
 include $(BUILD_SHARED_LIBRARY)
+
+endif # not BUILD_TINY_ANDROID
 

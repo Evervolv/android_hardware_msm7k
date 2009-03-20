@@ -1,7 +1,10 @@
 # When zero we link against libqcamera; when 1, we dlopen libqcamera.
 DLOPEN_LIBQCAMERA:=1
 
+ifneq ($(BUILD_TINY_ANDROID),true)
+
 LOCAL_PATH:= $(call my-dir)
+
 include $(CLEAR_VARS)
 
 LOCAL_CFLAGS:=-fno-short-enums
@@ -19,3 +22,6 @@ endif
 LOCAL_MODULE:= libcamera
 
 include $(BUILD_SHARED_LIBRARY)
+
+endif # not BUILD_TINY_ANDROID
+

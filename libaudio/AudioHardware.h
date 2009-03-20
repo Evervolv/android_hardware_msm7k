@@ -34,18 +34,15 @@ namespace android {
 // Kernel driver interface
 //
 
-#define AUDIO_IOCTL_MAGIC 'a'
-
-#define AUDIO_START        _IOW(AUDIO_IOCTL_MAGIC, 0, unsigned)
-#define AUDIO_STOP         _IOW(AUDIO_IOCTL_MAGIC, 1, unsigned)
-#define AUDIO_FLUSH        _IOW(AUDIO_IOCTL_MAGIC, 2, unsigned)
-#define AUDIO_GET_CONFIG   _IOR(AUDIO_IOCTL_MAGIC, 3, unsigned)
-#define AUDIO_SET_CONFIG   _IOW(AUDIO_IOCTL_MAGIC, 4, unsigned)
-#define AUDIO_GET_STATS    _IOR(AUDIO_IOCTL_MAGIC, 5, unsigned)
-#define AUDIO_ENABLE_AUDPP _IOW(AUDIO_IOCTL_MAGIC, 6, unsigned)
-#define AUDIO_SET_ADRC     _IOW(AUDIO_IOCTL_MAGIC, 7, unsigned)
-#define AUDIO_SET_EQ       _IOW(AUDIO_IOCTL_MAGIC, 8, unsigned)
-#define AUDIO_SET_RX_IIR   _IOW(AUDIO_IOCTL_MAGIC, 9, unsigned)
+#define SAMP_RATE_INDX_8000	0
+#define SAMP_RATE_INDX_11025	1
+#define SAMP_RATE_INDX_12000	2
+#define SAMP_RATE_INDX_16000	3
+#define SAMP_RATE_INDX_22050	4
+#define SAMP_RATE_INDX_24000	5
+#define SAMP_RATE_INDX_32000	6
+#define SAMP_RATE_INDX_44100	7
+#define SAMP_RATE_INDX_48000	8
 
 #define EQ_MAX_BAND_NUM 12
 
@@ -53,8 +50,8 @@ namespace android {
 #define ADRC_DISABLE 0x0000
 #define EQ_ENABLE    0x0002
 #define EQ_DISABLE   0x0000
-#define IIR_ENABLE   0x0004
-#define IIR_DISABLE  0x0000
+#define RX_IIR_ENABLE   0x0004
+#define RX_IIR_DISABLE  0x0000
 
 struct eq_filter_type {
     int16_t gain;
@@ -108,7 +105,6 @@ public:
                         AudioHardware();
     virtual             ~AudioHardware();
     virtual status_t    initCheck();
-    virtual status_t    standby();
 
     virtual status_t    setVoiceVolume(float volume);
     virtual status_t    setMasterVolume(float volume);
@@ -132,10 +128,11 @@ public:
                                 int format,
                                 int channelCount,
                                 uint32_t sampleRate,
-                                status_t *status);
+                                status_t *status,
+                                AudioSystem::audio_in_acoustics acoustics);
 
-            void        closeOutputStream(AudioStreamOutMSM72xx* out);
-            void        closeInputStream(AudioStreamInMSM72xx* in);
+               void        closeOutputStream(AudioStreamOutMSM72xx* out);
+               void        closeInputStream(AudioStreamInMSM72xx* in);
             
     virtual size_t getInputBufferSize(uint32_t sampleRate, int format, int channelCount);
 
@@ -145,13 +142,12 @@ protected:
 
 private:
 
-    status_t    standby_nosync();
-    status_t    checkStandby();
     status_t    doAudioRouteOrMute(uint32_t device);
     status_t    setMicMute_nosync(bool state);
     status_t    checkMicMute();
     status_t    dumpInternals(int fd, const Vector<String16>& args);    
     status_t    checkInputSampleRate(uint32_t sampleRate);
+    bool        checkOutputStandby();
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
     public:
@@ -169,14 +165,16 @@ private:
         virtual uint32_t    latency() const { return (1000*AUDIO_HW_NUM_OUT_BUF*(bufferSize()/frameSize()))/sampleRate()+AUDIO_HW_OUT_LATENCY_MS; }
         virtual status_t    setVolume(float volume) { return INVALID_OPERATION; }
         virtual ssize_t     write(const void* buffer, size_t bytes);
-                status_t    standby();
+        virtual status_t    standby();
         virtual status_t    dump(int fd, const Vector<String16>& args);
+                  bool          checkStandby();
 
     private:
                 AudioHardware* mHardware;
                 int         mFd;
                 int         mStartCount;
                 int         mRetryCount;
+                bool        mStandby;
     };
 
     class AudioStreamInMSM72xx : public AudioStreamIn {
@@ -192,7 +190,8 @@ private:
                 status_t    set(AudioHardware* mHardware,
                                 int format,
                                 int channelCount,
-                                uint32_t sampleRate);
+                                uint32_t sampleRate,
+                                AudioSystem::audio_in_acoustics acoustics);
         virtual size_t      bufferSize() const { return mBufferSize; }
         virtual int         channelCount() const { return mChannelCount; }
         virtual int         format() const { return mFormat; }
@@ -211,13 +210,12 @@ private:
                 int         mChannelCount;
                 uint32_t    mSampleRate;
                 size_t      mBufferSize;
+                AudioSystem::audio_in_acoustics mAcoustics;
     };
 
             static const uint32_t inputSamplingRates[];
             Mutex       mLock;
             bool        mInit;
-            bool        mStandby;
-            bool        mOutputStandby;
             bool        mMicMute;
             bool        mBluetoothNrec;
             uint32_t    mBluetoothId;
