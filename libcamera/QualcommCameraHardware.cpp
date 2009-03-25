@@ -1504,13 +1504,15 @@ namespace android {
         { "whiteboard", CAMERA_EFFECT_WHITEBOARD },
         { "blackboard", CAMERA_EFFECT_BLACKBOARD },
         { "aqua", CAMERA_EFFECT_AQUA },
+        { NULL, 0 }
     };
 
     static const struct str_map antibanding_map[] = {
         { "off", CAMERA_ANTIBANDING_OFF },
         { "50hz", CAMERA_ANTIBANDING_50HZ },
         { "60hz", CAMERA_ANTIBANDING_60HZ },
-        { "auto", CAMERA_ANTIBANDING_AUTO }
+        { "auto", CAMERA_ANTIBANDING_AUTO },
+        { NULL, 0 }
     };
 
     static int lookup(const struct str_map *const arr, const char *name, int def)
