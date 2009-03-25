@@ -214,7 +214,6 @@ private:
     };
 
             static const uint32_t inputSamplingRates[];
-            Mutex       mLock;
             bool        mInit;
             bool        mMicMute;
             bool        mBluetoothNrec;
@@ -224,6 +223,9 @@ private:
 
             msm_snd_endpoint *mSndEndpoints;
             int mNumSndEndpoints;
+            
+     friend class AudioStreamInMSM72xx;
+            Mutex       mLock;
 
             int SND_DEVICE_CURRENT;
             int SND_DEVICE_HANDSET;
