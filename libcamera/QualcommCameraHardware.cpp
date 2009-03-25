@@ -1757,7 +1757,8 @@ namespace android {
                 case CAMERA_EVT_CB_FRAME:
                     switch (obj->mCameraState) {
                     case QCS_PREVIEW_IN_PROGRESS:
-                        obj->receivePreviewFrame((camera_frame_type *)parm4);
+                        if (parm4)
+                            obj->receivePreviewFrame((camera_frame_type *)parm4);
                         break;
                     case QCS_INTERNAL_PREVIEW_STOPPING:
                         LOGE("camera cb: discarding preview frame "
