@@ -1594,13 +1594,6 @@ namespace android {
 
 #undef SET_PARM
 
-        /* Enable autofocus */
-        LINK_camera_set_parm_2 (CAMERA_PARM_AF_MODE,
-                                1, /* enable */
-                                0,
-                                NULL,
-                                NULL);
-
 #if 0
         /* Default Auto FPS: 30 (maximum) */
         LINK_camera_set_parm_2 (CAMERA_PARM_PREVIEW_FPS,
