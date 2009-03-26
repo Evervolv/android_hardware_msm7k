@@ -170,7 +170,7 @@ set_speaker_light_locked(struct light_device_t* dev,
     switch (state->flashMode) {
         case LIGHT_FLASH_TIMED:
             onMS = state->flashOnMS;
-            offMS = state->flashOnMS;
+            offMS = state->flashOffMS;
             break;
         case LIGHT_FLASH_NONE:
         default:
