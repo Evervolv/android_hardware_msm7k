@@ -1507,13 +1507,15 @@ namespace android {
         { "whiteboard", CAMERA_EFFECT_WHITEBOARD },
         { "blackboard", CAMERA_EFFECT_BLACKBOARD },
         { "aqua", CAMERA_EFFECT_AQUA },
+        { NULL, 0 }
     };
 
     static const struct str_map antibanding_map[] = {
         { "off", CAMERA_ANTIBANDING_OFF },
         { "50hz", CAMERA_ANTIBANDING_50HZ },
         { "60hz", CAMERA_ANTIBANDING_60HZ },
-        { "auto", CAMERA_ANTIBANDING_AUTO }
+        { "auto", CAMERA_ANTIBANDING_AUTO },
+        { NULL, 0 }
     };
 
     static int lookup(const struct str_map *const arr, const char *name, int def)
@@ -1594,13 +1596,6 @@ namespace android {
         SET_PARM(CAMERA_PARM_LUMA_ADAPTATION, luma_adaptation);
 
 #undef SET_PARM
-
-        /* Enable autofocus */
-        LINK_camera_set_parm_2 (CAMERA_PARM_AF_MODE,
-                                1, /* enable */
-                                0,
-                                NULL,
-                                NULL);
 
 #if 0
         /* Default Auto FPS: 30 (maximum) */
@@ -1733,20 +1728,19 @@ namespace android {
             LOGE("camera object has been destroyed--returning immediately");
             return;
         }
-        
+
         if (cb == CAMERA_EXIT_CB_ABORT ||     /* Function aborted             */
             cb == CAMERA_EXIT_CB_DSP_ABORT || /* Abort due to DSP failure     */
             cb == CAMERA_EXIT_CB_ERROR ||     /* Failed due to resource       */
             cb == CAMERA_EXIT_CB_FAILED)      /* Execution failed or rejected */
         {
-            // TODO: notify client applications of the errors
-            LOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d) in state %s.",
-                 parm4,
-                 obj->getCameraStateStr(obj->mCameraState));
-            if (parm4 == CAMERA_ERROR_VIDEO_ENGINE &&
-                !(obj->mCameraState == QCS_INTERNAL_PREVIEW_REQUESTED ||
-                  obj->mCameraState == QCS_INTERNAL_PREVIEW_STOPPING)) {
-                    TRANSITION_ALWAYS(QCS_ERROR);
+            // Autofocus failures occur relatively often and are not fatal, so
+            // we do not transition to QCS_ERROR for them.
+            if (func != CAMERA_FUNC_START_FOCUS) {
+                LOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d) in state %s.",
+                     parm4,
+                     obj->getCameraStateStr(obj->mCameraState));
+                TRANSITION_ALWAYS(QCS_ERROR);
             }
         }
 
@@ -1761,7 +1755,8 @@ namespace android {
                 case CAMERA_EVT_CB_FRAME:
                     switch (obj->mCameraState) {
                     case QCS_PREVIEW_IN_PROGRESS:
-                        obj->receivePreviewFrame((camera_frame_type *)parm4);
+                        if (parm4)
+                            obj->receivePreviewFrame((camera_frame_type *)parm4);
                         break;
                     case QCS_INTERNAL_PREVIEW_STOPPING:
                         LOGE("camera cb: discarding preview frame "
