@@ -349,8 +349,7 @@ namespace android {
 
         // List of whitebalance values
         p.set("whitebalance-values",
-              "auto,custom,incandescent,fluorescent,daylight,"
-              "cloudy,twilight,shade");
+              "auto,incandescent,fluorescent,daylight,cloudy");
 
         if (setParameters(p) != NO_ERROR) {
             LOGE("Failed to set default parameters?!");
