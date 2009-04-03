@@ -344,8 +344,8 @@ namespace android {
 
         // List supported effects:
         p.set("effect-values",
-              "mono,negative,solarize,pastel,mosaic,resize,"\
-              "sepia,posterize,whiteboard,blackboard,aqua");
+              "off,mono,negative,solarize,sepia,posterize,whiteboard,"\
+              "blackboard,aqua");
 
         // List of whitebalance values
         p.set("whitebalance-values",
@@ -1492,6 +1492,7 @@ namespace android {
     };
 
     static const struct str_map effect_map[] = {
+        { "off", CAMERA_EFFECT_OFF },
         { "mono", CAMERA_EFFECT_MONO },
         { "negative", CAMERA_EFFECT_NEGATIVE },
         { "solarize", CAMERA_EFFECT_SOLARIZE },
