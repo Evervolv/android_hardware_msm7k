@@ -338,6 +338,9 @@ namespace android {
         p.set("gps-altitude", "21"); // meters
 #endif
 
+        // List supported picture size values
+        p.set("picture-size-values", "2048x1536,1600x1200,1024x768");
+
         // List supported antibanding values
         p.set("antibanding-values",
               "off,50hz,60hz,auto");
