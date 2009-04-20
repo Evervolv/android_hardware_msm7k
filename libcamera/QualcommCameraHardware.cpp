@@ -18,7 +18,7 @@
 // -- replace Condition::wait with Condition::waitRelative
 // -- use read/write locks
 
-#define LOG_NDEBUG 0
+// #define LOG_NDEBUG 0
 #define LOG_TAG "QualcommCameraHardware"
 #include <utils/Log.h>
 #include <utils/threads.h>
