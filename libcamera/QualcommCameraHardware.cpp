@@ -1902,10 +1902,10 @@ namespace android {
                 if (obj->mAutoFocusCallback) {
                     switch (cb) {
                     case CAMERA_RSP_CB_SUCCESS:
-                        LOGE("camera cb: autofocus has started.");
+                        LOGV("camera cb: autofocus has started.");
                         break;
                     case CAMERA_EXIT_CB_DONE: {
-                        LOGE("camera cb: autofocus succeeded.");
+                        LOGV("camera cb: autofocus succeeded.");
                         Mutex::Autolock lock(&obj->mStateLock);
                         if (obj->mAutoFocusCallback) {
                             obj->mAutoFocusCallback(true,
