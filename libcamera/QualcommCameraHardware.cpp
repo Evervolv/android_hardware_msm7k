@@ -18,7 +18,7 @@
 // -- replace Condition::wait with Condition::waitRelative
 // -- use read/write locks
 
-#define LOG_NDEBUG 0
+// #define LOG_NDEBUG 0
 #define LOG_TAG "QualcommCameraHardware"
 #include <utils/Log.h>
 #include <utils/threads.h>
@@ -349,6 +349,10 @@ namespace android {
         p.set("effect-values",
               "off,mono,negative,solarize,sepia,posterize,whiteboard,"\
               "blackboard,aqua");
+
+        // List supported exposure-offset:
+        p.set("exposure-offset-values",
+              "0,1,2,3,4,5,6,7,8,9,10");
 
         // List of whitebalance values
         p.set("whitebalance-values",
@@ -1510,6 +1514,21 @@ namespace android {
         { NULL, 0 }
     };
 
+    static const struct str_map brightness_map[] = {
+        { "0", CAMERA_BRIGHTNESS_0 },
+        { "1", CAMERA_BRIGHTNESS_1 },
+        { "2", CAMERA_BRIGHTNESS_2 },
+        { "3", CAMERA_BRIGHTNESS_3 },
+        { "4", CAMERA_BRIGHTNESS_4 },
+        { "5", CAMERA_BRIGHTNESS_5 },
+        { "6", CAMERA_BRIGHTNESS_6 },
+        { "7", CAMERA_BRIGHTNESS_7 },
+        { "8", CAMERA_BRIGHTNESS_8 },
+        { "9", CAMERA_BRIGHTNESS_9 },
+        { "10", CAMERA_BRIGHTNESS_10 },
+        { NULL, 0 }
+    };
+
     static const struct str_map antibanding_map[] = {
         { "off", CAMERA_ANTIBANDING_OFF },
         { "50hz", CAMERA_ANTIBANDING_50HZ },
@@ -1581,6 +1600,11 @@ namespace android {
                  lookup(effect_map,
                         mParameters.get("effect"),
                         CAMERA_EFFECT_OFF));
+
+        SET_PARM(CAMERA_PARM_BRIGHTNESS,
+                 lookup(brightness_map,
+                        mParameters.get("exposure-offset"),
+                        CAMERA_BRIGHTNESS_DEFAULT));
 
         SET_PARM(CAMERA_PARM_ANTIBANDING,
                  lookup(antibanding_map,
@@ -1878,10 +1902,10 @@ namespace android {
                 if (obj->mAutoFocusCallback) {
                     switch (cb) {
                     case CAMERA_RSP_CB_SUCCESS:
-                        LOGE("camera cb: autofocus has started.");
+                        LOGV("camera cb: autofocus has started.");
                         break;
                     case CAMERA_EXIT_CB_DONE: {
-                        LOGE("camera cb: autofocus succeeded.");
+                        LOGV("camera cb: autofocus succeeded.");
                         Mutex::Autolock lock(&obj->mStateLock);
                         if (obj->mAutoFocusCallback) {
                             obj->mAutoFocusCallback(true,
