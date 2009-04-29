@@ -507,6 +507,19 @@ typedef enum
     CAMERA_MAX_ANTIBANDING,
 } camera_antibanding_type;
 
+/* Enum Type for different ISO Mode supported */
+typedef enum
+{
+  CAMERA_ISO_AUTO = 0,
+  CAMERA_ISO_HIGH,
+  CAMERA_ISO_DEBLUR,
+  CAMERA_ISO_100,
+  CAMERA_ISO_200,
+  CAMERA_ISO_400,
+  CAMERA_ISO_800,
+  CAMERA_ISO_MAX
+} camera_iso_mode_type;
+
 typedef enum
 {
     CAMERA_PREVIEW_MODE_SNAPSHOT,

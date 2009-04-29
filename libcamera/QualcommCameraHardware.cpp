@@ -358,6 +358,9 @@ namespace android {
         p.set("whitebalance-values",
               "auto,incandescent,fluorescent,daylight,cloudy");
 
+        // List of ISO values
+        p.set("iso-values", "auto,high");
+
         if (setParameters(p) != NO_ERROR) {
             LOGE("Failed to set default parameters?!");
         }
@@ -1537,6 +1540,12 @@ namespace android {
         { NULL, 0 }
     };
 
+    static const struct str_map iso_map[] = {
+        { "auto", CAMERA_ISO_AUTO },
+        { "high", CAMERA_ISO_HIGH },
+        { NULL, 0 }
+    };
+
     static int lookup(const struct str_map *const arr, const char *name, int def)
     {
         if (name) {
@@ -1605,6 +1614,11 @@ namespace android {
                  lookup(brightness_map,
                         mParameters.get("exposure-offset"),
                         CAMERA_BRIGHTNESS_DEFAULT));
+
+        SET_PARM(CAMERA_PARM_ISO,
+                 lookup(iso_map,
+                        mParameters.get("iso"),
+                        CAMERA_ISO_AUTO));
 
         SET_PARM(CAMERA_PARM_ANTIBANDING,
                  lookup(antibanding_map,
