@@ -32,6 +32,7 @@
 // hardware specific functions
 
 #include "AudioHardware.h"
+#include <media/AudioRecord.h>
 
 #define LOG_SND_RPC 0  // Set to 1 to log sound RPC's
 
@@ -168,9 +169,15 @@ void AudioHardware::closeOutputStream(AudioStreamOutMSM72xx* out) {
 }
 
 AudioStreamIn* AudioHardware::openInputStream(
-        int format, int channelCount, uint32_t sampleRate, status_t *status,
-        AudioSystem::audio_in_acoustics acoustic_flags)
+        int inputSource, int format, int channelCount, uint32_t sampleRate,
+        status_t *status, AudioSystem::audio_in_acoustics acoustic_flags)
 {
+    // check for valid input source
+    if ((inputSource != AudioRecord::DEFAULT_INPUT) &&
+            (inputSource != AudioRecord::MIC_INPUT)) {
+        return 0;
+    }
+
     mLock.lock();
     // input stream already open?
     if (mInput) {
@@ -196,6 +203,15 @@ AudioStreamIn* AudioHardware::openInputStream(
     mLock.unlock();
 
     return mInput;
+}
+
+// DEPRECATED
+AudioStreamIn* AudioHardware::openInputStream(
+        int format, int channelCount, uint32_t sampleRate, status_t *status,
+        AudioSystem::audio_in_acoustics acoustic_flags)
+{
+    return openInputStream(AudioRecord::DEFAULT_INPUT, format, channelCount,
+            sampleRate, status, acoustic_flags);
 }
 
 void AudioHardware::closeInputStream(AudioStreamInMSM72xx* in) {
