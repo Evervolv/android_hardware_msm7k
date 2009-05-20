@@ -205,15 +205,6 @@ AudioStreamIn* AudioHardware::openInputStream(
     return mInput;
 }
 
-// DEPRECATED
-AudioStreamIn* AudioHardware::openInputStream(
-        int format, int channelCount, uint32_t sampleRate, status_t *status,
-        AudioSystem::audio_in_acoustics acoustic_flags)
-{
-    return openInputStream(AudioRecord::DEFAULT_INPUT, format, channelCount,
-            sampleRate, status, acoustic_flags);
-}
-
 void AudioHardware::closeInputStream(AudioStreamInMSM72xx* in) {
     Mutex::Autolock lock(mLock);
     if (mInput != in) {
