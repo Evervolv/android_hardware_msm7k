@@ -22,7 +22,7 @@
 #define LOG_TAG "QualcommCameraHardware"
 #include <utils/Log.h>
 #include <utils/threads.h>
-#include <utils/MemoryHeapPmem.h>
+#include <binder/MemoryHeapPmem.h>
 #include <utils/String16.h>
 #include <sys/types.h>
 #include <sys/stat.h>
