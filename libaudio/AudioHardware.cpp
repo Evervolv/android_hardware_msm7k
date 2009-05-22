@@ -173,8 +173,8 @@ AudioStreamIn* AudioHardware::openInputStream(
         status_t *status, AudioSystem::audio_in_acoustics acoustic_flags)
 {
     // check for valid input source
-    if ((inputSource != AudioRecord::DEFAULT_INPUT) &&
-            (inputSource != AudioRecord::MIC_INPUT)) {
+    if ((inputSource < AudioRecord::DEFAULT_INPUT) ||
+        (inputSource >= AudioRecord::NUM_INPUT_SOURCES)) {
         return 0;
     }
 
