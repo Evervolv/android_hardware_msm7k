@@ -1,4 +1,4 @@
-BUILD_OLD_LIBCAMERA:=
+BUILD_OLD_LIBCAMERA:=true
 ifeq ($(BUILD_OLD_LIBCAMERA),true)
 
 # When zero we link against libqcamera; when 1, we dlopen libqcamera.
