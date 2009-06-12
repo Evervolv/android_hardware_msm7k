@@ -16,3 +16,7 @@
 ifeq ($(TARGET_BOARD_PLATFORM),msm7k)
   include $(all-subdir-makefiles)
 endif
+
+ifeq ($(TARGET_BOARD_PLATFORM),qsd8k)
+  include $(call all-named-subdir-makefiles,libcopybit)
+endif
