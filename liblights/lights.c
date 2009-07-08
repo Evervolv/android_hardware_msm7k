@@ -42,9 +42,13 @@ static int g_backlight = 255;
 static int g_trackball = -1;
 static int g_buttons = 0;
 static int g_attention = 0;
+static int g_haveAmberLed = 0;
 
 char const*const TRACKBALL_FILE
         = "/sys/class/leds/jogball-backlight/brightness";
+
+char const*const AMBERLED_FILE
+        = "/sys/class/leds/amber/brightness";
 
 /**
  * device methods
@@ -57,6 +61,10 @@ void init_globals(void)
 
     // figure out if we have the trackball LED or not
     g_haveTrackballLight = (access(TRACKBALL_FILE, W_OK) == 0) ? 1 : 0;
+
+    /* figure out if we have the amber LED or not.
+       If yes, just support green and amber.         */
+    g_haveAmberLed = (access(AMBERLED_FILE, W_OK) == 0) ? 1 : 0;
 }
 
 static int
@@ -190,9 +198,21 @@ set_speaker_light_locked(struct light_device_t* dev,
     green = (colorRGB >> 8) & 0xFF;
     blue = colorRGB & 0xFF;
 
-    write_int("/sys/class/leds/red/brightness", red);
-    write_int("/sys/class/leds/green/brightness", green);
-    write_int("/sys/class/leds/blue/brightness", blue);
+    if (!g_haveAmberLed) {
+        write_int("/sys/class/leds/red/brightness", red);
+        write_int("/sys/class/leds/green/brightness", green);
+        write_int("/sys/class/leds/blue/brightness", blue);
+    } else {
+        /* all of related red led is replaced by amber */
+        if (red)
+            write_int("/sys/class/leds/amber/brightness", 1);
+        else if (green)
+            write_int("/sys/class/leds/green/brightness", 1);
+        else {
+            write_int("/sys/class/leds/green/brightness", 0);
+            write_int("/sys/class/leds/amber/brightness", 0);
+        }
+    }
 
     if (onMS > 0 && offMS > 0) {        
         int totalMS = onMS + offMS;
@@ -216,11 +236,15 @@ set_speaker_light_locked(struct light_device_t* dev,
         pwm = 0;
     }
     
-    if (blink) {
-        write_int("/sys/class/leds/red/device/grpfreq", freq);
-        write_int("/sys/class/leds/red/device/grppwm", pwm);
+    if (!g_haveAmberLed) {
+        if (blink) {
+            write_int("/sys/class/leds/red/device/grpfreq", freq);
+            write_int("/sys/class/leds/red/device/grppwm", pwm);
+        }
+        write_int("/sys/class/leds/red/device/blink", blink);
+    } else {
+        write_int("/sys/class/leds/amber/blink", blink);
     }
-    write_int("/sys/class/leds/red/device/blink", blink);
 
     return 0;
 }
