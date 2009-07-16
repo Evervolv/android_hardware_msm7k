@@ -78,6 +78,8 @@ struct private_module_t {
     buffer_handle_t currentBuffer;
     int pmem_master;
     void* pmem_master_base;
+    int gpu;
+    void* gpu_base;
 
     struct fb_var_screeninfo info;
     struct fb_fix_screeninfo finfo;
@@ -98,6 +100,7 @@ struct private_handle_t : public native_handle
     enum {
         PRIV_FLAGS_FRAMEBUFFER = 0x00000001,
         PRIV_FLAGS_USES_PMEM   = 0x00000002,
+        PRIV_FLAGS_USES_GPU    = 0x00000004,
     };
 
     enum {
@@ -119,7 +122,7 @@ struct private_handle_t : public native_handle
 
     static const int sNumInts = 8;
     static const int sNumFds = 1;
-    static const int sMagic = 0x3141592;
+    static const int sMagic = 'msm7';
 
     private_handle_t(int fd, int size, int flags) :
         fd(fd), magic(sMagic), flags(flags), size(size), offset(0),

@@ -162,14 +162,18 @@ int terminateBuffer(gralloc_module_t const* module,
     LOGE_IF(hnd->lockState & private_handle_t::LOCK_STATE_READ_MASK,
             "[terminate] handle %p still locked (state=%08x)",
             hnd, hnd->lockState);
-    
+
     if (hnd->lockState & private_handle_t::LOCK_STATE_MAPPED) {
         // this buffer was mapped, unmap it now
-        if ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) && 
-            (hnd->pid == getpid())) {
-            // ... unless it's a "master" pmem buffer, that is a buffer
-            // mapped in the process it's been allocated.
-            // (see gralloc_alloc_buffer())
+        if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) {
+            if (hnd->pid != getpid()) {
+                // ... unless it's a "master" pmem buffer, that is a buffer
+                // mapped in the process it's been allocated.
+                // (see gralloc_alloc_buffer())
+                gralloc_unmap(module, hnd);
+            }
+        } else if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_GPU) {
+            // XXX: for now do nothing here
         } else {
             gralloc_unmap(module, hnd);
         }

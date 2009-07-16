@@ -36,14 +36,16 @@
 
 #include "gralloc_priv.h"
 #include "allocator.h"
+#include "msm_hw3d.h"
 
-#if HAVE_ANDROID_OS
 #include <linux/android_pmem.h>
-#endif
 
 /*****************************************************************************/
 
+#define ALLOCATORREGION_RESERVED_SIZE           (1200<<10)
+
 static SimpleBestFitAllocator sAllocator;
+static SimpleBestFitAllocator sAllocatorGPU(ALLOCATORREGION_RESERVED_SIZE);
 
 /*****************************************************************************/
 
@@ -106,7 +108,9 @@ struct private_module_t HAL_MODULE_INFO_SYM = {
     lock: PTHREAD_MUTEX_INITIALIZER,
     currentBuffer: 0,
     pmem_master: -1,
-    pmem_master_base: 0
+    pmem_master_base: 0,
+    gpu: -1,
+    gpu_base: 0
 };
 
 /*****************************************************************************/
@@ -176,6 +180,7 @@ static int gralloc_alloc_framebuffer(alloc_device_t* dev,
     return err;
 }
 
+
 static int init_pmem_area_locked(private_module_t* m)
 {
     int err = 0;
@@ -228,6 +233,63 @@ static int init_pmem_area(private_module_t* m)
     return err;
 }
 
+static int init_gpu_area_locked(private_module_t* m)
+{
+    int err = 0;
+    int gpu = open("/dev/hw3dm", O_RDWR, 0);
+    LOGE_IF(gpu<0, "could not open hw3dm (%s)", strerror(errno));
+    if (gpu >= 0) {
+        struct hw3d_region regions[HW3D_NUM_REGIONS];
+        if (ioctl(gpu, HW3D_GET_REGIONS, regions) < 0) {
+            LOGE("HW3D_GET_REGIONS failed (%s)", strerror(errno));
+            err = -errno;
+        } else {
+            LOGD("smi: offset=%d, len=%d", regions[0].offset, regions[0].len);
+            LOGD("ebi: offset=%d, len=%d", regions[1].offset, regions[1].len);
+            LOGD("reg: offset=%d, len=%d", regions[2].offset, regions[2].len);
+
+            void* base = mmap(0, regions[HW3D_EBI].len,
+                    PROT_READ|PROT_WRITE, MAP_SHARED, gpu, regions[HW3D_EBI].offset);
+
+            if (base == MAP_FAILED) {
+                LOGE("mmap EBI1 (%s)", strerror(errno));
+                err = -errno;
+                base = 0;
+                close(gpu);
+                gpu = -1;
+            }
+
+            m->gpu = gpu;
+            m->gpu_base = base;
+        }
+    } else {
+        err = -errno;
+        m->gpu = 0;
+        m->gpu_base = 0;
+    }
+    return err;
+}
+
+static int init_gpu_area(private_module_t* m)
+{
+    pthread_mutex_lock(&m->lock);
+    int err = m->gpu;
+    if (err == -1) {
+        // first time, try to initialize gpu
+        err = init_gpu_area_locked(m);
+        if (err) {
+            m->gpu = err;
+        }
+    } else if (err < 0) {
+        // gpu couldn't be initialized, never use it
+    } else {
+        // gpu OK
+        err = 0;
+    }
+    pthread_mutex_unlock(&m->lock);
+    return err;
+}
+
 static int gralloc_alloc_buffer(alloc_device_t* dev,
         size_t size, int usage, buffer_handle_t* pHandle)
 {
@@ -241,8 +303,6 @@ static int gralloc_alloc_buffer(alloc_device_t* dev,
 
     size = roundUpToPageSize(size);
     
-#if HAVE_ANDROID_OS // should probably define HAVE_PMEM somewhere
-
     if (usage & GRALLOC_USAGE_HW_TEXTURE) {
         // enable pmem in that case, so our software GL can fallback to
         // the copybit module.
@@ -257,10 +317,10 @@ static int gralloc_alloc_buffer(alloc_device_t* dev,
 try_ashmem:
         fd = ashmem_create_region("gralloc-buffer", size);
         if (fd < 0) {
-            LOGE("couldn't create ashmem (%s)", strerror(-errno));
+            LOGE("couldn't create ashmem (%s)", strerror(errno));
             err = -errno;
         }
-    } else {
+    } else if ((usage & GRALLOC_USAGE_HW_RENDER) == 0) {
         private_module_t* m = reinterpret_cast<private_module_t*>(
                 dev->common.module);
 
@@ -304,20 +364,37 @@ try_ashmem:
                 err = 0;
                 goto try_ashmem;
             } else {
-                LOGE("couldn't open pmem (%s)", strerror(-errno));
+                LOGE("couldn't open pmem (%s)", strerror(errno));
             }
         }
-    }
+    } else {
+        // looks like we want 3D...
+        flags &= ~private_handle_t::PRIV_FLAGS_USES_PMEM;
+        flags |= private_handle_t::PRIV_FLAGS_USES_GPU;
 
-#else // HAVE_ANDROID_OS
-    
-    fd = ashmem_create_region("Buffer", size);
-    if (fd < 0) {
-        LOGE("couldn't create ashmem (%s)", strerror(-errno));
-        err = -errno;
-    }
+        private_module_t* m = reinterpret_cast<private_module_t*>(
+                dev->common.module);
 
-#endif // HAVE_ANDROID_OS
+        err = init_gpu_area(m);
+        if (err == 0) {
+            // GPU buffers are always mmapped
+            base = m->gpu_base;
+            lockState |= private_handle_t::LOCK_STATE_MAPPED;
+            offset = sAllocatorGPU.allocate(size);
+            if (offset < 0) {
+                // no more pmem memory
+                err = -ENOMEM;
+            } else {
+                LOGD_IF(!err, "allocating GPU size=%d, offset=%d", size, offset);
+                fd = dup(m->gpu); // 'cause free() will close it
+            }
+        } else {
+            // not enough memory, try ashmem
+            flags &= ~private_handle_t::PRIV_FLAGS_USES_GPU;
+            err = 0;
+            goto try_ashmem;
+        }
+    }
 
     if (err == 0) {
         private_handle_t* hnd = new private_handle_t(fd, size, flags);
@@ -410,7 +487,6 @@ static int gralloc_free(alloc_device_t* dev,
         int index = (hnd->base - m->framebuffer->base) / bufferSize;
         m->bufferMask &= ~(1<<index); 
     } else { 
-#if HAVE_ANDROID_OS
         if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) {
             if (hnd->fd >= 0) {
                 struct pmem_region sub = { hnd->offset, hnd->size };
@@ -425,8 +501,11 @@ static int gralloc_free(alloc_device_t* dev,
                     sAllocator.deallocate(hnd->offset);
                 }
             }
+        } else if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_GPU) {
+            LOGD("freeing GPU buffer at %d", hnd->offset);
+            sAllocatorGPU.deallocate(hnd->offset);
         }
-#endif // HAVE_ANDROID_OS
+
         gralloc_module_t* module = reinterpret_cast<gralloc_module_t*>(
                 dev->common.module);
         terminateBuffer(module, const_cast<private_handle_t*>(hnd));
