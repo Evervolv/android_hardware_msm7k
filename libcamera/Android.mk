@@ -17,7 +17,7 @@ LOCAL_SRC_FILES:= QualcommCameraHardware.cpp
 
 LOCAL_SHARED_LIBRARIES:= libutils libbinder libui liblog
 ifneq ($(DLOPEN_LIBQCAMERA),1)
-LOCAL_SHARED_LIBRARIES+= libqcamera
+LOCAL_SHARED_LIBRARIES+= liboemcamera
 else
 LOCAL_SHARED_LIBRARIES+= libdl
 endif
