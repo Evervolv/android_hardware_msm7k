@@ -18,5 +18,5 @@ ifeq ($(TARGET_BOARD_PLATFORM),msm7k)
 endif
 
 ifeq ($(TARGET_BOARD_PLATFORM),qsd8k)
-  include $(call all-named-subdir-makefiles,libcopybit)
+  include $(call all-named-subdir-makefiles,libcopybit libaudio)
 endif

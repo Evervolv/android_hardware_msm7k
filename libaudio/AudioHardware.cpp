@@ -65,6 +65,8 @@ AudioHardware::AudioHardware() :
     acoustic = ::dlopen("/system/lib/libhtc_acoustic.so", RTLD_NOW);
     if (acoustic == NULL ) {
         LOGE("Could not open libhtc_acoustic.so");
+        /* this is not really an error on non-htc devices... */
+        mNumSndEndpoints = 0;
         return;
     }
 
@@ -122,7 +124,10 @@ AudioHardware::~AudioHardware()
     delete mInput;
     delete mOutput;
     delete [] mSndEndpoints;
-    ::dlclose(acoustic);
+    if (acoustic) {
+        ::dlclose(acoustic);
+        acoustic = 0;
+    }
     mInit = false;
 }
 
@@ -459,6 +464,10 @@ static int count_bits(uint32_t vector)
 
 status_t AudioHardware::doRouting()
 {
+    /* currently this code doesn't work without the htc libacoustic */
+    if (!acoustic)
+        return 0;
+
     Mutex::Autolock lock(mLock);
     uint32_t routes = mRoutes[mMode];
     if (count_bits(routes) > 1) {
@@ -771,6 +780,10 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     mHardware = hw;
     mHardware->setMicMute_nosync(false);
     mState = AUDIO_INPUT_OPENED;
+
+    if (!acoustic)
+        return NO_ERROR;
+
     audpre_index = calculate_audpre_table_index(sampleRate);
     tx_iir_index = (audpre_index * 2) + (hw->checkOutputStandby() ? 0 : 1);
     LOGD("audpre_index = %d, tx_iir_index = %d\n", audpre_index, tx_iir_index);
