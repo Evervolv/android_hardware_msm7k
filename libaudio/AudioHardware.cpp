@@ -67,6 +67,7 @@ AudioHardware::AudioHardware() :
         LOGE("Could not open libhtc_acoustic.so");
         /* this is not really an error on non-htc devices... */
         mNumSndEndpoints = 0;
+        mInit = true;
         return;
     }
 
