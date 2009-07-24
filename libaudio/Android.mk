@@ -13,14 +13,11 @@ LOCAL_SHARED_LIBRARIES := \
     libutils \
     libmedia
 
-
 LOCAL_MODULE:= libaudiopolicy
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
   LOCAL_CFLAGS += -DWITH_A2DP
 endif
-
-LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
 
