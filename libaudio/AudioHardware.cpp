@@ -32,6 +32,7 @@
 // hardware specific functions
 
 #include "AudioHardware.h"
+#include <media/AudioRecord.h>
 
 #define LOG_SND_RPC 0  // Set to 1 to log sound RPC's
 
@@ -168,9 +169,15 @@ void AudioHardware::closeOutputStream(AudioStreamOutMSM72xx* out) {
 }
 
 AudioStreamIn* AudioHardware::openInputStream(
-        int format, int channelCount, uint32_t sampleRate, status_t *status,
-        AudioSystem::audio_in_acoustics acoustic_flags)
+        int inputSource, int format, int channelCount, uint32_t sampleRate,
+        status_t *status, AudioSystem::audio_in_acoustics acoustic_flags)
 {
+    // check for valid input source
+    if ((inputSource != AudioRecord::DEFAULT_INPUT) &&
+            (inputSource != AudioRecord::MIC_INPUT)) {
+        return 0;
+    }
+
     mLock.lock();
     // input stream already open?
     if (mInput) {
@@ -366,6 +373,7 @@ status_t AudioHardware::setVoiceVolume(float v)
     LOGD("setVoiceVolume(%f)\n", v);
     LOGI("Setting in-call volume to %d (available range is 0 to 5)\n", vol);
 
+    Mutex::Autolock lock(mLock);
     set_volume_rpc(SND_DEVICE_CURRENT, SND_METHOD_VOICE, vol);
     return NO_ERROR;
 }
@@ -804,13 +812,14 @@ AudioHardware::AudioStreamInMSM72xx::~AudioStreamInMSM72xx()
 
 ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 {
-    LOGV("AudioStreamInMSM72xx::read(%p, %u)", buffer, bytes);
+    LOGV("AudioStreamInMSM72xx::read(%p, %ld)", buffer, bytes);
     if (!mHardware) return -1;
 
     size_t count = bytes;
     uint8_t* p = static_cast<uint8_t*>(buffer);
 
     if (mState < AUDIO_INPUT_OPENED) {
+        Mutex::Autolock lock(mHardware->mLock);
         if (set(mHardware, mFormat, mChannelCount, mSampleRate, mAcoustics) != NO_ERROR) {
             return -1;
         }

@@ -479,6 +479,25 @@ typedef enum
     CAMERA_EFFECT_MAX_PLUS_1
 } camera_effect_type;
 
+/* Brightness type, used for CAMERA_PARM_BRIGHTNESS */
+typedef enum
+{
+    CAMERA_BRIGHTNESS_MIN = 0,
+    CAMERA_BRIGHTNESS_0 = 0,
+    CAMERA_BRIGHTNESS_1 = 1,
+    CAMERA_BRIGHTNESS_2 = 2,
+    CAMERA_BRIGHTNESS_3 = 3,
+    CAMERA_BRIGHTNESS_4 = 4,
+    CAMERA_BRIGHTNESS_5 = 5,
+    CAMERA_BRIGHTNESS_DEFAULT = 5,
+    CAMERA_BRIGHTNESS_6 = 6,
+    CAMERA_BRIGHTNESS_7 = 7,
+    CAMERA_BRIGHTNESS_8 = 8,
+    CAMERA_BRIGHTNESS_9 = 9,
+    CAMERA_BRIGHTNESS_10 = 10,
+    CAMERA_BRIGHTNESS_MAX = 10
+} camera_brightness_type;
+
 typedef enum
 {
     CAMERA_ANTIBANDING_OFF,
@@ -487,6 +506,19 @@ typedef enum
     CAMERA_ANTIBANDING_AUTO,
     CAMERA_MAX_ANTIBANDING,
 } camera_antibanding_type;
+
+/* Enum Type for different ISO Mode supported */
+typedef enum
+{
+  CAMERA_ISO_AUTO = 0,
+  CAMERA_ISO_HIGH,
+  CAMERA_ISO_DEBLUR,
+  CAMERA_ISO_100,
+  CAMERA_ISO_200,
+  CAMERA_ISO_400,
+  CAMERA_ISO_800,
+  CAMERA_ISO_MAX
+} camera_iso_mode_type;
 
 typedef enum
 {
