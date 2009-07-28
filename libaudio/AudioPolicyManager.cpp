@@ -120,6 +120,17 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     }
 
                 }
+                // move streams pertaining to STRATEGY_DTMF to the newly opened A2DP output
+                if (getDeviceForStrategy(STRATEGY_DTMF) & device) {
+                    for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                        if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
+                            mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
+                            mOutputs.valueFor(mA2dpOutput)->mRefCount[i] = mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
+                            mOutputs.valueFor(mHardwareOutput)->mRefCount[i] = 0;
+                        }
+                    }
+
+                }
                 // move streams pertaining to STRATEGY_SONIFICATION to the newly opened duplicated output
                 if (getDeviceForStrategy(STRATEGY_SONIFICATION) & device) {
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
@@ -241,6 +252,21 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     LOGW("setDeviceConnectionState() disconnecting unknow A2DP sink address %s", device_address);
                     mAvailableOutputDevices |= device;
                     return INVALID_OPERATION;
+                }
+
+                // If the A2DP device was used by DTMF strategy, move all streams pertaining to DTMF strategy to
+                // hardware output
+                if (wasUsedforDtmf) {
+                    for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                        if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
+                            mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                            mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i,
+                                    mOutputs.valueFor(mA2dpOutput)->mRefCount[i]);
+                        }
+                    }
+                    if (mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
+                        newDevice = getDeviceForStrategy(STRATEGY_DTMF);
+                    }
                 }
 
                 // If the A2DP device was used by media strategy, move all streams pertaining to media strategy to
@@ -446,6 +472,7 @@ void AudioPolicyManager::setPhoneState(int state)
     }
     // store previous phone state for management of sonification strategy below
     int oldState = mPhoneState;
+    uint32_t oldDtmfDevice = getDeviceForStrategy(STRATEGY_DTMF);
     mPhoneState = state;
 
     // check if a routing change is required for hardware output in the following
@@ -460,8 +487,37 @@ void AudioPolicyManager::setPhoneState(int state)
         newDevice = getDeviceForStrategy(STRATEGY_PHONE);
     } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)){
         newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
-    } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)){
-        newDevice = getDeviceForStrategy(STRATEGY_DTMF);
+    }
+    else if (mA2dpOutput != 0) {
+        // If entering or exiting in call state, switch DTMF streams to/from A2DP output
+        // if necessary
+        uint32_t newDtmfDevice = getDeviceForStrategy(STRATEGY_DTMF);
+        if (state == AudioSystem::MODE_IN_CALL) {
+            if (mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_DTMF) &&
+                AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
+                !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
+                newDevice = newDtmfDevice;
+                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
+                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i,
+                                mOutputs.valueFor(mA2dpOutput)->mRefCount[i]);
+                    }
+                }
+            }
+        } else {
+            if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF) &&
+                !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
+                AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
+                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
+                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
+                        mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i,
+                                mOutputs.valueFor(mHardwareOutput)->mRefCount[i]);
+                    }
+                }
+            }
+        }
     }
 
     // change routing is necessary
@@ -892,7 +948,7 @@ void AudioPolicyManager::releaseInput(audio_io_handle_t input)
     LOGV("releaseInput() %p", input);
     ssize_t index = mInputs.indexOfKey(input);
     if (index < 0) {
-        LOGW("releaseInput() releasing unknownnwn input %p", input);
+        LOGW("releaseInput() releasing unknown input %p", input);
         return;
     }
     mpClientInterface->closeInput(input);
@@ -1080,9 +1136,17 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
     uint32_t device = 0;
 
     switch (strategy) {
-    case STRATEGY_PHONE:
     case STRATEGY_DTMF:
-        // Fro phone strategy, we first consider the forced use and then the available devices by order
+        if (mPhoneState != AudioSystem::MODE_IN_CALL) {
+            // when off call, DTMF strategy follows the same rules as MEDIA strategy
+            device = getDeviceForStrategy(STRATEGY_MEDIA);
+            break;
+        }
+        // when in call, DTMF and PHONE strategies follow the same rules
+        // FALL THROUGH
+
+    case STRATEGY_PHONE:
+        // for phone strategy, we first consider the forced use and then the available devices by order
         // of priority
         switch (mForceUse[AudioSystem::FOR_COMMUNICATION]) {
         case AudioSystem::FORCE_BT_SCO:
