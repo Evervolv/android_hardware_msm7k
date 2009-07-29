@@ -1,3 +1,6 @@
+BUILD_OLD_LIBCAMERA:=
+ifeq ($(BUILD_OLD_LIBCAMERA),true)
+
 # When zero we link against libqcamera; when 1, we dlopen libqcamera.
 DLOPEN_LIBQCAMERA:=1
 
@@ -24,4 +27,4 @@ LOCAL_MODULE:= libcamera
 include $(BUILD_SHARED_LIBRARY)
 
 endif # not BUILD_TINY_ANDROID
-
+endif # not BUILD_OLD_LIBCAMERA
