@@ -42,6 +42,7 @@
 
 /*****************************************************************************/
 
+// NOTE: must be the same than in oem.h
 #define ALLOCATORREGION_RESERVED_SIZE           (1200<<10)
 
 static SimpleBestFitAllocator sAllocator;
@@ -244,12 +245,22 @@ static int init_gpu_area_locked(private_module_t* m)
             LOGE("HW3D_GET_REGIONS failed (%s)", strerror(errno));
             err = -errno;
         } else {
-            LOGD("smi: offset=%d, len=%d", regions[0].offset, regions[0].len);
-            LOGD("ebi: offset=%d, len=%d", regions[1].offset, regions[1].len);
-            LOGD("reg: offset=%d, len=%d", regions[2].offset, regions[2].len);
+            LOGD("smi: offset=%08lx, len=%08lx, phys=%p", 
+                    regions[HW3D_SMI].map_offset, 
+                    regions[HW3D_SMI].len, 
+                    regions[HW3D_SMI].phys);
+            LOGD("ebi: offset=%08lx, len=%08lx, phys=%p", 
+                    regions[HW3D_EBI].map_offset,
+                    regions[HW3D_EBI].len,
+                    regions[HW3D_EBI].phys);
+            LOGD("reg: offset=%08lx, len=%08lx, phys=%p", 
+                    regions[HW3D_REGS].map_offset,
+                    regions[HW3D_REGS].len,
+                    regions[HW3D_REGS].phys);
 
             void* base = mmap(0, regions[HW3D_EBI].len,
-                    PROT_READ|PROT_WRITE, MAP_SHARED, gpu, regions[HW3D_EBI].offset);
+                    PROT_READ|PROT_WRITE, MAP_SHARED,
+                    gpu, regions[HW3D_EBI].map_offset);
 
             if (base == MAP_FAILED) {
                 LOGE("mmap EBI1 (%s)", strerror(errno));
