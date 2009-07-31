@@ -109,18 +109,22 @@ struct private_handle_t : public native_handle
         LOCK_STATE_READ_MASK =   0x3FFFFFFF
     };
 
+    // file-descriptors
     int     fd;
+    // ints
     int     magic;
     int     flags;
     int     size;
     int     offset;
+    int     gpu_fd; // stored as an int, b/c we don't want it marshalled
+    
     // FIXME: the attributes below should be out-of-line
     int     base;
     int     lockState;
     int     writeOwner;
     int     pid;
 
-    static const int sNumInts = 8;
+    static const int sNumInts = 9;
     static const int sNumFds = 1;
     static const int sMagic = 'msm7';
 
@@ -137,17 +141,18 @@ struct private_handle_t : public native_handle
     }
 
     bool usesPhysicallyContiguousMemory() {
-        return (flags & PRIV_FLAGS_USES_PMEM) != 0;
+        return (flags & (PRIV_FLAGS_USES_PMEM|PRIV_FLAGS_USES_GPU)) != 0;
     }
 
     static int validate(const native_handle* h) {
+        const private_handle_t* hnd = (const private_handle_t*)h;
         if (!h || h->version != sizeof(native_handle) ||
-                h->numInts!=sNumInts || h->numFds!=sNumFds) {
+                h->numInts != sNumInts || h->numFds != sNumFds ||
+                hnd->magic != sMagic) 
+        {
+            LOGE("invalid gralloc handle (at %p)", h);
             return -EINVAL;
         }
-        const private_handle_t* hnd = (const private_handle_t*)h;
-        if (hnd->magic != sMagic)
-            return -EINVAL;
         return 0;
     }
 

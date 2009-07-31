@@ -308,6 +308,7 @@ static int gralloc_alloc_buffer(alloc_device_t* dev,
     int flags = 0;
 
     int fd = -1;
+    int gpu_fd = -1;
     void* base = 0;
     int offset = 0;
     int lockState = 0;
@@ -397,7 +398,8 @@ try_ashmem:
                 err = -ENOMEM;
             } else {
                 LOGD_IF(!err, "allocating GPU size=%d, offset=%d", size, offset);
-                fd = dup(m->gpu); // 'cause free() will close it
+                fd = open("/dev/null", O_RDONLY); // just so marshalling doesn't fail
+                gpu_fd = m->gpu;
             }
         } else {
             // not enough memory, try ashmem
@@ -412,6 +414,7 @@ try_ashmem:
         hnd->offset = offset;
         hnd->base = int(base)+offset;
         hnd->lockState = lockState;
+        hnd->gpu_fd = gpu_fd;
         *pHandle = hnd;
     }
     
