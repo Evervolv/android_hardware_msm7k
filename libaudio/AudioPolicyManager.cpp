@@ -488,15 +488,14 @@ void AudioPolicyManager::setPhoneState(int state)
     } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)){
         newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
     }
-    else if (mA2dpOutput != 0) {
+
+    if (mA2dpOutput != 0) {
         // If entering or exiting in call state, switch DTMF streams to/from A2DP output
         // if necessary
         uint32_t newDtmfDevice = getDeviceForStrategy(STRATEGY_DTMF);
         if (state == AudioSystem::MODE_IN_CALL) {
-            if (mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_DTMF) &&
-                AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
+            if (AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
                 !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
-                newDevice = newDtmfDevice;
                 for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                     if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
                         mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
@@ -504,10 +503,12 @@ void AudioPolicyManager::setPhoneState(int state)
                                 mOutputs.valueFor(mA2dpOutput)->mRefCount[i]);
                     }
                 }
+                if (newDevice == 0 && mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
+                    newDevice = newDtmfDevice;
+                }
             }
         } else {
-            if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF) &&
-                !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
+            if (!AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
                 AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
                 for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                     if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
