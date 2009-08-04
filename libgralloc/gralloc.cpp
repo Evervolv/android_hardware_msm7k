@@ -237,7 +237,7 @@ static int init_pmem_area(private_module_t* m)
 static int init_gpu_area_locked(private_module_t* m)
 {
     int err = 0;
-    int gpu = open("/dev/hw3dm", O_RDWR, 0);
+    int gpu = open("/dev/msm_hw3dm", O_RDWR, 0);
     LOGE_IF(gpu<0, "could not open hw3dm (%s)", strerror(errno));
     if (gpu >= 0) {
         struct hw3d_region regions[HW3D_NUM_REGIONS];
