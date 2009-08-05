@@ -13,10 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-ifeq ($(TARGET_BOARD_PLATFORM),msm7k)
-  include $(all-subdir-makefiles)
-endif
 
-ifeq ($(TARGET_BOARD_PLATFORM),qsd8k)
-  include $(call all-named-subdir-makefiles,libcopybit libaudio librpc libcamera2 liblights)
+common_msm_dirs := libaudio libcopybit liblights librpc
+msm7k_dirs := $(common_msm_dirs) boot libgralloc
+qsd8k_dirs := $(common_msm_dirs)
+
+ifeq ($(TARGET_BOARD_PLATFORM),msm7k)
+  include $(call all-named-subdir-makefiles,$(msm7k_dirs))
+else
+  ifeq ($(TARGET_BOARD_PLATFORM),qsd8k)
+    include $(call all-named-subdir-makefiles,$(qsd8k_dirs))
+  endif
 endif
