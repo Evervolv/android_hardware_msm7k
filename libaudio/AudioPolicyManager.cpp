@@ -721,9 +721,10 @@ status_t AudioPolicyManager::startOutput(audio_io_handle_t output, AudioSystem::
             } else
 #endif
             {
-                // we only support speaker + headset combination on hardware output.
-                // Other combinations will leave device = 0 and no routing will happen
-                if (device != (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADSET)) {
+                // we only support speaker + headset and speaker + headphone combinations on hardware output.
+                // other combinations will leave device = 0 and no routing will happen.
+                if (device != (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
+                    device != (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADPHONE)) {
                     device = AudioSystem::DEVICE_OUT_SPEAKER;
                 }
             }
@@ -1290,7 +1291,8 @@ void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t devi
 
     mOutputs.valueFor(output)->mDevice = device;
     // mute media streams if both speaker and headset are selected
-    if (device == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADSET)) {
+    if (device == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADSET) ||
+        device == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADPHONE)) {
         setStrategyMute(STRATEGY_MEDIA, true, output);
     }
     // suspend A2D output if SCO device is selected
@@ -1315,7 +1317,8 @@ void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t devi
          }
     }
     // if changing from a combined headset + speaker route, unmute media streams
-    if (oldDevice == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADSET)) {
+    if (oldDevice == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADSET) ||
+        oldDevice == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADPHONE)) {
         setStrategyMute(STRATEGY_MEDIA, false, output);
     }
 }
