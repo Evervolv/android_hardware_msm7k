@@ -388,7 +388,9 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
 
         if (device == AudioSystem::DEVICE_OUT_WIRED_HEADSET) {
             device = AudioSystem::DEVICE_IN_WIRED_HEADSET;
-        } else if (device == AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET) {
+        } else if (device == AudioSystem::DEVICE_OUT_BLUETOOTH_SCO ||
+                   device == AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET ||
+                   device == AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT) {
             device = AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET;
         } else {
             return NO_ERROR;
@@ -519,6 +521,16 @@ void AudioPolicyManager::setPhoneState(int state)
                 }
             }
         }
+        // suspend A2DP output if SCO device address is the same as A2DP device address.
+        // no need to check that a SCO device is actually connected as mScoDeviceAddress == ""
+        // if none is connected and the test below will fail.
+        if (mA2dpDeviceAddress == mScoDeviceAddress) {
+            if (state == AudioSystem::MODE_RINGTONE) {
+                mpClientInterface->suspendOutput(mA2dpOutput);
+            } else if (oldState == AudioSystem::MODE_RINGTONE) {
+                mpClientInterface->restoreOutput(mA2dpOutput);
+            }
+        }
     }
 
     // change routing is necessary
@@ -545,13 +557,13 @@ void AudioPolicyManager::setRingerMode(uint32_t mode, uint32_t mask)
 
 void AudioPolicyManager::setForceUse(AudioSystem::force_use usage, AudioSystem::forced_config config)
 {
-    LOGV("setForceUse) usage %d, config %d, mPhoneState %d", usage, config, mPhoneState);
+    LOGV("setForceUse() usage %d, config %d, mPhoneState %d", usage, config, mPhoneState);
 
     switch(usage) {
     case AudioSystem::FOR_COMMUNICATION:
         if (config != AudioSystem::FORCE_SPEAKER && config != AudioSystem::FORCE_BT_SCO &&
             config != AudioSystem::FORCE_NONE) {
-            LOGW("setForceUse) invalid config %d for FOR_COMMUNICATION", config);
+            LOGW("setForceUse() invalid config %d for FOR_COMMUNICATION", config);
             return;
         }
         mForceUse[usage] = config;
@@ -564,7 +576,7 @@ void AudioPolicyManager::setForceUse(AudioSystem::force_use usage, AudioSystem::
     case AudioSystem::FOR_MEDIA:
         if (config != AudioSystem::FORCE_HEADPHONES && config != AudioSystem::FORCE_BT_A2DP &&
             config != AudioSystem::FORCE_WIRED_ACCESSORY && config != AudioSystem::FORCE_NONE) {
-            LOGW("setForceUse) invalid config %d for FOR_MEDIA", config);
+            LOGW("setForceUse() invalid config %d for FOR_MEDIA", config);
             return;
         }
         mForceUse[usage] = config;
@@ -572,13 +584,13 @@ void AudioPolicyManager::setForceUse(AudioSystem::force_use usage, AudioSystem::
     case AudioSystem::FOR_RECORD:
         if (config != AudioSystem::FORCE_BT_SCO && config != AudioSystem::FORCE_WIRED_ACCESSORY &&
             config != AudioSystem::FORCE_NONE) {
-            LOGW("setForceUse) invalid config %d for FOR_RECORD", config);
+            LOGW("setForceUse() invalid config %d for FOR_RECORD", config);
             return;
         }
         mForceUse[usage] = config;
         break;
     default:
-        LOGW("setForceUse) invalid usage %d", usage);
+        LOGW("setForceUse() invalid usage %d", usage);
         break;
     }
 }
@@ -848,9 +860,10 @@ audio_io_handle_t AudioPolicyManager::getInput(int inputSource,
     switch(inputSource) {
     case AUDIO_SOURCE_DEFAULT:
     case AUDIO_SOURCE_MIC:
-        if (mAvailableInputDevices & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
+        if (mForceUse[AudioSystem::FOR_RECORD] == AudioSystem::FORCE_BT_SCO &&
+            mAvailableInputDevices & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
             device = AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET;
-        } if (mAvailableInputDevices & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
+        } else if (mAvailableInputDevices & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
             device = AudioSystem::DEVICE_IN_WIRED_HEADSET;
         } else {
             device = AudioSystem::DEVICE_IN_BUILTIN_MIC;

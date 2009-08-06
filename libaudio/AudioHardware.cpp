@@ -465,7 +465,7 @@ static status_t do_route_audio_rpc(uint32_t device,
 // always call with mutex held
 status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
 {
-    if (device == (uint32_t)SND_DEVICE_BT) {
+    if (device == (uint32_t)SND_DEVICE_BT || device == (uint32_t)SND_DEVICE_CARKIT) {
         if (mBluetoothId) {
             device = mBluetoothId;
         } else if (!mBluetoothNrec) {
@@ -533,9 +533,13 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
         if (outputDevices & AudioSystem::DEVICE_OUT_TTY) {
                 LOGI("Routing audio to TTY\n");
                 sndDevice = SND_DEVICE_TTY_FULL;
-        } else if (outputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO) {
+        } else if (outputDevices &
+                   (AudioSystem::DEVICE_OUT_BLUETOOTH_SCO | AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET)) {
             LOGI("Routing audio to Bluetooth PCM\n");
             sndDevice = SND_DEVICE_BT;
+        } else if (outputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT) {
+            LOGI("Routing audio to Bluetooth PCM\n");
+            sndDevice = SND_DEVICE_CARKIT;
         } else if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
                    (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
             LOGI("Routing audio to Wired Headset and Speaker\n");
@@ -552,7 +556,7 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
                 audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
             } else {
                 LOGI("Routing audio to FM Headset (%d,%x)\n", mMode, outputDevices);
-                sndDevice = doAudioRouteOrMute(SND_DEVICE_FM_HEADSET);
+                sndDevice = SND_DEVICE_FM_HEADSET;
             }
         } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
             if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
