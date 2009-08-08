@@ -400,7 +400,6 @@ try_ashmem:
                 LOGD("allocating GPU size=%d, offset=%d", size, offset);
                 fd = open("/dev/null", O_RDONLY); // just so marshalling doesn't fail
                 gpu_fd = m->gpu;
-                memset((char*)base+offset, 0, size);
             }
         } else {
             // not enough memory, try ashmem
@@ -417,6 +416,7 @@ try_ashmem:
         hnd->lockState = lockState;
         hnd->gpu_fd = gpu_fd;
         *pHandle = hnd;
+        memset((void*)hnd->base, 0, size);
     }
     
     LOGE_IF(err, "gralloc failed err=%s", strerror(-err));
