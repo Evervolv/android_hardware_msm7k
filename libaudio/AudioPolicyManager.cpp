@@ -300,6 +300,10 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                 }
 
                 // close A2DP and duplicated outputs
+                AudioParameter param;
+                param.add(String8("closing"), String8("true"));
+                mpClientInterface->setParameters(mA2dpOutput, param.toString());
+
                 LOGW("setDeviceConnectionState() closing A2DP and duplicated output!");
                 mpClientInterface->closeOutput(mDuplicatedOutput);
                 delete mOutputs.valueFor(mDuplicatedOutput);
