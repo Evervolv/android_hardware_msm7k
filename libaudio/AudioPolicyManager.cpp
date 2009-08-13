@@ -161,7 +161,8 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                                getDeviceForStrategy(STRATEGY_DTMF) == device) {
                         newDevice = device;
                     }
-                } else if (device == AudioSystem::DEVICE_OUT_WIRED_HEADSET) {
+                } else if (device == AudioSystem::DEVICE_OUT_WIRED_HEADSET ||
+                           device == AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
                     LOGV("setDeviceConnectionState() wired headset device");
                     // if connecting a wired headset, we check the following by order of priority
                     // to request a routing change if necessary:
@@ -198,8 +199,7 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                         mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_PHONE))) {
                         newDevice = device;
                     }
-                } else if (device == AudioSystem::DEVICE_OUT_WIRED_HEADPHONE ||
-                           device == AudioSystem::DEVICE_OUT_FM_SPEAKER ||
+                } else if (device == AudioSystem::DEVICE_OUT_FM_SPEAKER ||
                            device == AudioSystem::DEVICE_OUT_FM_HEADPHONE) {
                     LOGV("setDeviceConnectionState() no mic headphone device");
                     // if connecting a wired headset, we check the following by order of priority
@@ -326,7 +326,8 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                                mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
                         newDevice = getDeviceForStrategy(STRATEGY_DTMF);
                     }
-                } else if (device == AudioSystem::DEVICE_OUT_WIRED_HEADSET) {
+                } else if (device == AudioSystem::DEVICE_OUT_WIRED_HEADSET ||
+                           device == AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
                     // if disconnecting a wired headset, we check the following by order of priority
                     // to request a routing change if necessary:
                     // 1: we are in call or the strategy phone is active on the hardware output:
@@ -358,8 +359,7 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                          mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_PHONE))) {
                         newDevice = getDeviceForStrategy(STRATEGY_PHONE);
                     }
-                } else if (device == AudioSystem::DEVICE_OUT_WIRED_HEADPHONE ||
-                           device == AudioSystem::DEVICE_OUT_FM_SPEAKER ||
+                } else if (device == AudioSystem::DEVICE_OUT_FM_SPEAKER ||
                            device == AudioSystem::DEVICE_OUT_FM_HEADPHONE) {
                     LOGV("setDeviceConnectionState() no mic headphone device");
                     if (wasUsedForSonification &&
@@ -1167,6 +1167,8 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
 
         default:    // FORCE_NONE
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_TTY;
+            if (device) break;
+            device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
             if (device) break;
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
             if (device) break;
