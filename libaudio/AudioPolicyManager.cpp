@@ -997,30 +997,15 @@ status_t AudioPolicyManager::setStreamVolumeIndex(AudioSystem::stream_type strea
     LOGV("setStreamVolumeIndex() stream %d, index %d", stream, index);
     mStreams[stream].mIndexCur = index;
 
-    // do not change actual stream volume if the stream is muted
-    if (mStreams[stream].mMuteCount != 0) {
-        return NO_ERROR;
-    }
-
-    // Do not changed in call volume if bluetooth is connected and vice versa
-    if ((stream == AudioSystem::VOICE_CALL && mForceUse[AudioSystem::FOR_COMMUNICATION] == AudioSystem::FORCE_BT_SCO) ||
-        (stream == AudioSystem::BLUETOOTH_SCO && mForceUse[AudioSystem::FOR_COMMUNICATION] != AudioSystem::FORCE_BT_SCO)) {
-        LOGV("setStreamVolumeIndex() cannot set stream %d volume with force use = %d for comm",
-             stream, mForceUse[AudioSystem::FOR_COMMUNICATION]);
-        return INVALID_OPERATION;
-    }
-
     // compute and apply stream volume on all outputs according to connected device
+    status_t status = NO_ERROR;
     for (size_t i = 0; i < mOutputs.size(); i++) {
-        AudioOutputDescriptor *outputDesc = mOutputs.valueAt(i);
-        uint32_t device = outputDesc->device();
-
-        float volume = computeVolume((int)stream, index, device);
-
-        LOGV("setStreamVolume() for output %d stream %d, volume %f", mOutputs.keyAt(i), stream, volume);
-        mpClientInterface->setStreamVolume(stream, volume, mOutputs.keyAt(i));
+        status_t volStatus = checkAndSetVolume(stream, index, mOutputs.keyAt(i), mOutputs.valueAt(i)->device());
+        if (volStatus != NO_ERROR) {
+            status = volStatus;
+        }
     }
-    return NO_ERROR;
+    return status;
 }
 
 status_t AudioPolicyManager::getStreamVolumeIndex(AudioSystem::stream_type stream, int *index)
@@ -1364,14 +1349,35 @@ float AudioPolicyManager::computeVolume(int stream, int index, uint32_t device)
     return volume;
 }
 
+status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device)
+{
+
+    // do not change actual stream volume if the stream is muted
+    if (mStreams[stream].mMuteCount != 0) {
+        return NO_ERROR;
+    }
+
+    // do not change in call volume if bluetooth is connected and vice versa
+    if ((stream == AudioSystem::VOICE_CALL && mForceUse[AudioSystem::FOR_COMMUNICATION] == AudioSystem::FORCE_BT_SCO) ||
+        (stream == AudioSystem::BLUETOOTH_SCO && mForceUse[AudioSystem::FOR_COMMUNICATION] != AudioSystem::FORCE_BT_SCO)) {
+        LOGV("setStreamVolumeIndex() cannot set stream %d volume with force use = %d for comm",
+             stream, mForceUse[AudioSystem::FOR_COMMUNICATION]);
+        return INVALID_OPERATION;
+    }
+
+    float volume = computeVolume(stream, mStreams[stream].mIndexCur, device);
+    mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, volume, output);
+    LOGV("setStreamVolume() for output %d stream %d, volume %f", output, stream, volume);
+
+    return NO_ERROR;
+}
+
 void AudioPolicyManager::applyStreamVolumes(audio_io_handle_t output, uint32_t device)
 {
     LOGV("applyStreamVolumes() for output %d and device %x", output, device);
 
     for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
-        if (mStreams[stream].mMuteCount != 0) continue;
-        float volume = computeVolume(stream, mStreams[stream].mIndexCur, device);
-        mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, volume, output);
+        checkAndSetVolume(stream, mStreams[stream].mIndexCur, output, device);
     }
 }
 
@@ -1390,22 +1396,23 @@ void AudioPolicyManager::setStreamMute(int stream, bool on, audio_io_handle_t ou
     LOGV("setStreamMute() stream %d, mute %d, output %d", stream, on, output);
 
     StreamDescriptor &streamDesc = mStreams[stream];
+    uint32_t device = mOutputs.valueFor(output)->mDevice;
 
     if (on) {
-        if (streamDesc.mMuteCount++ == 0) {
+        if (streamDesc.mMuteCount == 0) {
             if (streamDesc.mCanBeMuted) {
-                mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, 0, output);
+                checkAndSetVolume(stream, 0, output, device);
             }
         }
+        // increment mMuteCount after calling checkAndSetVolume() so that volume change is not ignored
+        streamDesc.mMuteCount++;
     } else {
         if (streamDesc.mMuteCount == 0) {
             LOGW("setStreamMute() unmuting non muted stream!");
             return;
         }
         if (--streamDesc.mMuteCount == 0) {
-            uint32_t device = mOutputs.valueFor(output)->mDevice;
-            float volume = computeVolume(stream, streamDesc.mIndexCur, device);
-            mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, volume, output);
+            checkAndSetVolume(stream, streamDesc.mIndexCur, output, device);
         }
     }
 }

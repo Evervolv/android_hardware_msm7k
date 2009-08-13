@@ -148,7 +148,9 @@ private:
         // compute the actual volume for a given stream according to the requested index and a particular
         // device
         float computeVolume(int stream, int index, uint32_t device);
-        // compute and apply all stream volumes to the specified output and device
+        // check that volume change is permitted, compute and send new volume to audio hardware
+        status_t checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device);
+        // apply all stream volumes to the specified output and device
         void applyStreamVolumes(audio_io_handle_t output, uint32_t device);
         // Mute or unmute all streams handled by the specified strategy on the specified output
         void setStrategyMute(routing_strategy strategy, bool on, audio_io_handle_t output);
