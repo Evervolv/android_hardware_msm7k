@@ -37,7 +37,7 @@ struct private_handle_t;
 struct private_module_t {
     gralloc_module_t base;
 
-    private_handle_t* framebuffer;
+    struct private_handle_t* framebuffer;
     uint32_t flags;
     uint32_t numBuffers;
     uint32_t bufferMask;
@@ -45,6 +45,7 @@ struct private_module_t {
     buffer_handle_t currentBuffer;
     int pmem_master;
     void* pmem_master_base;
+    unsigned long master_phys;
     int gpu;
     void* gpu_base;
 
@@ -66,7 +67,7 @@ struct private_module_t {
 struct private_handle_t : public native_handle {
 #else
 struct private_handle_t {
-    struct native_handle nativeHandle;
+    native_handle_t nativeHandle;
 #endif
     
     enum {
@@ -94,10 +95,11 @@ struct private_handle_t {
     int     base;
     int     lockState;
     int     writeOwner;
+    int     phys; // The physical address of that chunk of memory. If using ashmem, set to 0 They don't care
     int     pid;
 
 #ifdef __cplusplus
-    static const int sNumInts = 9;
+    static const int sNumInts = 10;
     static const int sNumFds = 1;
     static const int sMagic = 'msm7';
 
