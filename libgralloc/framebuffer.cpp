@@ -38,11 +38,9 @@
 #endif
 
 #include "gralloc_priv.h"
+#include "gr.h"
 
 /*****************************************************************************/
-
-// should be a build option
-#define SUPPORTS_UPDATE_ON_DEMAND   1
 
 // numbers of buffers for page flipping
 #define NUM_BUFFERS 2
@@ -334,7 +332,6 @@ int fb_device_open(hw_module_t const* module, const char* name,
 {
     int status = -EINVAL;
     if (!strcmp(name, GRALLOC_HARDWARE_FB0)) {
-
         alloc_device_t* gralloc_device;
         status = gralloc_open(module, &gralloc_device);
         if (status < 0)
@@ -367,15 +364,6 @@ int fb_device_open(hw_module_t const* module, const char* name,
             const_cast<float&>(dev->device.fps) = m->fps;
             const_cast<int&>(dev->device.minSwapInterval) = 1;
             const_cast<int&>(dev->device.maxSwapInterval) = 1;
-
-#if SUPPORTS_UPDATE_ON_DEMAND
-            if (m->finfo.reserved[0] == 0x5444 && 
-                    m->finfo.reserved[1] == 0x5055) {
-                dev->device.setUpdateRect = fb_setUpdateRect;
-                LOGD("UPDATE_ON_DEMAND supported");
-            }
-#endif
-
             *device = &dev->device.common;
         }
     }
