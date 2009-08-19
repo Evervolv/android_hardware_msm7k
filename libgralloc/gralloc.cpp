@@ -110,6 +110,7 @@ struct private_module_t HAL_MODULE_INFO_SYM = {
     currentBuffer: 0,
     pmem_master: -1,
     pmem_master_base: 0,
+    master_phys: 0,
     gpu: -1,
     gpu_base: 0
 };
