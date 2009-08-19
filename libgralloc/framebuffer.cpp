@@ -33,14 +33,16 @@
 #include <cutils/log.h>
 #include <cutils/atomic.h>
 
-#if HAVE_ANDROID_OS
 #include <linux/fb.h>
-#endif
+#include <linux/msm_mdp.h>
 
 #include "gralloc_priv.h"
 #include "gr.h"
 
 /*****************************************************************************/
+
+// should be a build option
+#define SUPPORTS_UPDATE_ON_DEMAND   0
 
 // numbers of buffers for page flipping
 #define NUM_BUFFERS 2
@@ -56,6 +58,10 @@ struct fb_context_t {
 };
 
 /*****************************************************************************/
+
+static void
+msm_copy_buffer(buffer_handle_t handle, int fd, int width, int height,
+                int x, int y, int w, int h);
 
 static int fb_setSwapInterval(struct framebuffer_device_t* dev,
             int interval)
@@ -131,7 +137,12 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
                 0, 0, m->info.xres, m->info.yres,
                 &buffer_vaddr);
 
-        memcpy(fb_vaddr, buffer_vaddr, m->finfo.line_length * m->info.yres);
+        //memcpy(fb_vaddr, buffer_vaddr, m->finfo.line_length * m->info.yres);
+
+        msm_copy_buffer(m->framebuffer, m->framebuffer->fd,
+                m->info.xres, m->info.yres,
+                m->info.xoffset, m->info.yoffset,
+                m->info.width, m->info.height);
         
         m->base.unlock(&m->base, buffer); 
         m->base.unlock(&m->base, m->framebuffer); 
@@ -304,6 +315,7 @@ int mapFrameBufferLocked(struct private_module_t* module)
         return -errno;
     }
     module->framebuffer->base = intptr_t(vaddr);
+
     memset(vaddr, 0, fbSize);
     return 0;
 }
@@ -368,4 +380,43 @@ int fb_device_open(hw_module_t const* module, const char* name,
         }
     }
     return status;
+}
+
+/* Copy a pmem buffer to the framebuffer */
+
+static void
+msm_copy_buffer(buffer_handle_t handle, int fd, int width, int height,
+                int x, int y, int w, int h)
+{
+    struct {
+        unsigned int count;
+        mdp_blit_req req;
+    } blit;
+    private_handle_t *priv = (private_handle_t*) handle;
+
+    memset(&blit, 0, sizeof(blit));
+    blit.count = 1;
+
+    blit.req.flags = 0;
+    blit.req.alpha = 0xff;
+    blit.req.transp_mask = 0xffffffff;
+
+    blit.req.src.width = width;
+    blit.req.src.height = height;
+    blit.req.src.offset = 0;
+    blit.req.src.memory_id = priv->fd;
+
+    blit.req.dst.width = width;
+    blit.req.dst.height = height;
+    blit.req.dst.offset = 0;
+    blit.req.dst.memory_id = fd; 
+    blit.req.dst.format = MDP_RGB_565;
+
+    blit.req.src_rect.x = blit.req.dst_rect.x = x;
+    blit.req.src_rect.y = blit.req.dst_rect.y = y;
+    blit.req.src_rect.w = blit.req.dst_rect.w = w;
+    blit.req.src_rect.h = blit.req.dst_rect.h = h;
+
+    if (ioctl(fd, MSMFB_BLIT, &blit))
+        LOGE("MSMFB_BLIT failed = %d", -errno);
 }
