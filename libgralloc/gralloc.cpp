@@ -34,11 +34,11 @@
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
 
+#include <linux/msm_hw3d.h>
+#include <linux/android_pmem.h>
+
 #include "gralloc_priv.h"
 #include "allocator.h"
-#include "msm_hw3d.h"
-
-#include <linux/android_pmem.h>
 
 /*****************************************************************************/
 
