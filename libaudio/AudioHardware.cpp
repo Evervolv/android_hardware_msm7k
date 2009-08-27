@@ -236,6 +236,17 @@ void AudioHardware::closeInputStream(AudioStreamIn* in) {
     }
 }
 
+status_t AudioHardware::setMode(int mode)
+{
+    status_t status = AudioHardwareBase::setMode(mode);
+    if (status == NO_ERROR) {
+        // make sure that doAudioRouteOrMute() is called by doRouting()
+        // even if the new device selected is the same as current one.
+        mCurSndDevice = -1;
+    }
+    return status;
+}
+
 bool AudioHardware::checkOutputStandby()
 {
     if (mOutput)
