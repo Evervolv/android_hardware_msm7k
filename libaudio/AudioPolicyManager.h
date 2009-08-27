@@ -126,13 +126,14 @@ private:
         {
         public:
             StreamDescriptor()
-            :   mIndexMin(0), mIndexMax(1), mIndexCur(1), mMuteCount(0), mCanBeMuted(true) {}
+            :   mIndexMin(0), mIndexMax(1), mIndexCur(1), mMuteCount(0), mCanBeMuted(true), mCurVolume(-1.0) {}
 
             int mIndexMin;      // min volume index
             int mIndexMax;      // max volume index
             int mIndexCur;      // current volume index
             int mMuteCount;     // mute request counter
             bool mCanBeMuted;   // true is the stream can be muted
+            float mCurVolume;   // current stream volume
         };
 
         // return the strategy corresponding to a given stream type
@@ -144,18 +145,18 @@ private:
         // phone state, connected devices...
         uint32_t getDeviceForStrategy(routing_strategy strategy);
         // change the route of the specified output
-        void setOutputDevice(audio_io_handle_t output, uint32_t device, bool force = false);
+        void setOutputDevice(audio_io_handle_t output, uint32_t device, bool force = false, int delayMs = 0);
         // compute the actual volume for a given stream according to the requested index and a particular
         // device
         float computeVolume(int stream, int index, uint32_t device);
         // check that volume change is permitted, compute and send new volume to audio hardware
-        status_t checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device);
+        status_t checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device, int delayMs = 0);
         // apply all stream volumes to the specified output and device
-        void applyStreamVolumes(audio_io_handle_t output, uint32_t device);
+        void applyStreamVolumes(audio_io_handle_t output, uint32_t device, int delayMs = 0);
         // Mute or unmute all streams handled by the specified strategy on the specified output
-        void setStrategyMute(routing_strategy strategy, bool on, audio_io_handle_t output);
+        void setStrategyMute(routing_strategy strategy, bool on, audio_io_handle_t output, int delayMs = 0);
         // Mute or unmute the stream on the specified output
-        void setStreamMute(int stream, bool on, audio_io_handle_t output);
+        void setStreamMute(int stream, bool on, audio_io_handle_t output, int delayMs = 0);
         // handle special cases for sonification strategy while in call: mute streams or replace by
         // a special tone in the device used for communication
         void handleIncallSonification(int stream, bool starting);
