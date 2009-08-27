@@ -823,8 +823,11 @@ status_t AudioPolicyManager::stopOutput(audio_io_handle_t output, AudioSystem::s
                 newDevice = getDeviceForStrategy(STRATEGY_DTMF);
             }
 
-            // apply routing change if necessary
-            setOutputDevice(mHardwareOutput, newDevice);
+            // apply routing change if necessary.
+            // insert a delay of 2 times the audio hardware latency to ensure PCM
+            // buffers in audio flinger and audio hardware are emptied before the
+            // routing change is executed.
+            setOutputDevice(mHardwareOutput, newDevice, false, mOutputs.valueFor(mHardwareOutput)->mLatency*2);
         }
         return NO_ERROR;
     } else {
@@ -1258,9 +1261,9 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
     return device;
 }
 
-void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t device, bool force)
+void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t device, bool force, int delayMs)
 {
-    LOGV("setOutputDevice() output %d device %x", output, device);
+    LOGV("setOutputDevice() output %d device %x delayMs %d", output, device, delayMs);
     if (mOutputs.indexOfKey(output) < 0) {
         LOGW("setOutputDevice() unknown output %d", output);
         return;
@@ -1298,6 +1301,8 @@ void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t devi
     if (device == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADSET) ||
         device == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADPHONE)) {
         setStrategyMute(STRATEGY_MEDIA, true, output);
+        // wait for the PCM output buffers to empty before proceeding with the rest of the command
+        usleep(mOutputs.valueFor(output)->mLatency*2*1000);
     }
     // suspend A2D output if SCO device is selected
     if (AudioSystem::isBluetoothScoDevice((AudioSystem::audio_devices)device)) {
@@ -1309,9 +1314,9 @@ void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t devi
     // do the routing
     AudioParameter param = AudioParameter();
     param.addInt(String8(AudioParameter::keyRouting), (int)device);
-    mpClientInterface->setParameters(mHardwareOutput, param.toString());
+    mpClientInterface->setParameters(mHardwareOutput, param.toString(), delayMs);
     // update stream volumes according to new device
-    applyStreamVolumes(output, device);
+    applyStreamVolumes(output, device, delayMs);
 
     // if disconnecting SCO device, restore A2DP output
     if (AudioSystem::isBluetoothScoDevice((AudioSystem::audio_devices)oldDevice)) {
@@ -1323,7 +1328,7 @@ void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t devi
     // if changing from a combined headset + speaker route, unmute media streams
     if (oldDevice == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADSET) ||
         oldDevice == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADPHONE)) {
-        setStrategyMute(STRATEGY_MEDIA, false, output);
+        setStrategyMute(STRATEGY_MEDIA, false, output, delayMs);
     }
 }
 
@@ -1351,59 +1356,64 @@ float AudioPolicyManager::computeVolume(int stream, int index, uint32_t device)
     return volume;
 }
 
-status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device)
+status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device, int delayMs)
 {
 
     // do not change actual stream volume if the stream is muted
     if (mStreams[stream].mMuteCount != 0) {
+        LOGV("checkAndSetVolume() stream %d muted count %d", stream, mStreams[stream].mMuteCount);
         return NO_ERROR;
     }
 
     // do not change in call volume if bluetooth is connected and vice versa
     if ((stream == AudioSystem::VOICE_CALL && mForceUse[AudioSystem::FOR_COMMUNICATION] == AudioSystem::FORCE_BT_SCO) ||
         (stream == AudioSystem::BLUETOOTH_SCO && mForceUse[AudioSystem::FOR_COMMUNICATION] != AudioSystem::FORCE_BT_SCO)) {
-        LOGV("setStreamVolumeIndex() cannot set stream %d volume with force use = %d for comm",
+        LOGV("checkAndSetVolume() cannot set stream %d volume with force use = %d for comm",
              stream, mForceUse[AudioSystem::FOR_COMMUNICATION]);
         return INVALID_OPERATION;
     }
 
-    float volume = computeVolume(stream, mStreams[stream].mIndexCur, device);
-    mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, volume, output);
-    LOGV("setStreamVolume() for output %d stream %d, volume %f", output, stream, volume);
+    float volume = computeVolume(stream, index, device);
+    // do not set volume if the float value did not change
+    if (volume != mStreams[stream].mCurVolume) {
+        mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, volume, output, delayMs);
+        mStreams[stream].mCurVolume = volume;
+        LOGV("setStreamVolume() for output %d stream %d, volume %f, delay %d", output, stream, volume, delayMs);
+    }
 
     return NO_ERROR;
 }
 
-void AudioPolicyManager::applyStreamVolumes(audio_io_handle_t output, uint32_t device)
+void AudioPolicyManager::applyStreamVolumes(audio_io_handle_t output, uint32_t device, int delayMs)
 {
     LOGV("applyStreamVolumes() for output %d and device %x", output, device);
 
     for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
-        checkAndSetVolume(stream, mStreams[stream].mIndexCur, output, device);
+        checkAndSetVolume(stream, mStreams[stream].mIndexCur, output, device, delayMs);
     }
 }
 
-void AudioPolicyManager::setStrategyMute(routing_strategy strategy, bool on, audio_io_handle_t output)
+void AudioPolicyManager::setStrategyMute(routing_strategy strategy, bool on, audio_io_handle_t output, int delayMs)
 {
     LOGV("setStrategyMute() strategy %d, mute %d, output %d", strategy, on, output);
     for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
         if (getStrategy((AudioSystem::stream_type)stream) == strategy) {
-            setStreamMute(stream, on, output);
+            setStreamMute(stream, on, output, delayMs);
         }
     }
 }
 
-void AudioPolicyManager::setStreamMute(int stream, bool on, audio_io_handle_t output)
+void AudioPolicyManager::setStreamMute(int stream, bool on, audio_io_handle_t output, int delayMs)
 {
-    LOGV("setStreamMute() stream %d, mute %d, output %d", stream, on, output);
-
     StreamDescriptor &streamDesc = mStreams[stream];
     uint32_t device = mOutputs.valueFor(output)->mDevice;
+
+    LOGV("setStreamMute() stream %d, mute %d, output %d, mMuteCount %d", stream, on, output, streamDesc.mMuteCount);
 
     if (on) {
         if (streamDesc.mMuteCount == 0) {
             if (streamDesc.mCanBeMuted) {
-                checkAndSetVolume(stream, 0, output, device);
+                checkAndSetVolume(stream, 0, output, device, delayMs);
             }
         }
         // increment mMuteCount after calling checkAndSetVolume() so that volume change is not ignored
@@ -1414,7 +1424,7 @@ void AudioPolicyManager::setStreamMute(int stream, bool on, audio_io_handle_t ou
             return;
         }
         if (--streamDesc.mMuteCount == 0) {
-            checkAndSetVolume(stream, streamDesc.mIndexCur, output, device);
+            checkAndSetVolume(stream, streamDesc.mIndexCur, output, device, delayMs);
         }
     }
 }
