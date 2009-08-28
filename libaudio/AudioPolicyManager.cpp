@@ -480,7 +480,7 @@ void AudioPolicyManager::setPhoneState(int state)
     int oldState = mPhoneState;
     uint32_t oldDtmfDevice = getDeviceForStrategy(STRATEGY_DTMF);
     mPhoneState = state;
-
+    bool force = false;
     // check if a routing change is required for hardware output in the following
     // order of priority:
     // 1: a stream pertaining to sonification strategy is active
@@ -491,8 +491,13 @@ void AudioPolicyManager::setPhoneState(int state)
         newDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
     } else if (mPhoneState == AudioSystem::MODE_IN_CALL) {
         newDevice = getDeviceForStrategy(STRATEGY_PHONE);
-    } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)){
+        // force routing command to audio hardware when starting call
+        // even if no device change is needed
+        force = true;
+    } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)) {
         newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
+    } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
+        newDevice = getDeviceForStrategy(STRATEGY_DTMF);
     }
 
     if (mA2dpOutput != 0) {
@@ -537,8 +542,16 @@ void AudioPolicyManager::setPhoneState(int state)
         }
     }
 
+    // force routing command to audio hardware when ending call
+    // even if no device change is needed
+    if (oldState == AudioSystem::MODE_IN_CALL) {
+        if (newDevice == 0) {
+            newDevice = mOutputs.valueFor(mHardwareOutput)->device();
+        }
+        force = true;
+    }
     // change routing is necessary
-    setOutputDevice(mHardwareOutput, newDevice);
+    setOutputDevice(mHardwareOutput, newDevice, force);
 
     // if leaving or entering in call state, handle special case of active streams
     // pertaining to sonification strategy see handleIncallSonification()
