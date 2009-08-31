@@ -47,8 +47,38 @@ static int g_haveAmberLed = 0;
 char const*const TRACKBALL_FILE
         = "/sys/class/leds/jogball-backlight/brightness";
 
-char const*const AMBERLED_FILE
+char const*const RED_LED_FILE
+        = "/sys/class/leds/red/brightness";
+
+char const*const GREEN_LED_FILE
+        = "/sys/class/leds/green/brightness";
+
+char const*const BLUE_LED_FILE
+        = "/sys/class/leds/blue/brightness";
+
+char const*const AMBER_LED_FILE
         = "/sys/class/leds/amber/brightness";
+
+char const*const LCD_FILE
+        = "/sys/class/leds/lcd-backlight/brightness";
+
+char const*const RED_FREQ_FILE
+        = "/sys/class/leds/red/device/grpfreq";
+
+char const*const RED_PWM_FILE
+        = "/sys/class/leds/red/device/grppwm";
+
+char const*const RED_BLINK_FILE
+        = "/sys/class/leds/red/device/blink";
+
+char const*const AMBER_BLINK_FILE
+        = "/sys/class/leds/amber/blink";
+
+char const*const KEYBOARD_FILE
+        = "/sys/class/leds/keyboard-backlight/brightness";
+
+char const*const BUTTON_FILE
+        = "/sys/class/leds/button-backlight/brightness";
 
 /**
  * device methods
@@ -64,7 +94,7 @@ void init_globals(void)
 
     /* figure out if we have the amber LED or not.
        If yes, just support green and amber.         */
-    g_haveAmberLed = (access(AMBERLED_FILE, W_OK) == 0) ? 1 : 0;
+    g_haveAmberLed = (access(AMBER_LED_FILE, W_OK) == 0) ? 1 : 0;
 }
 
 static int
@@ -132,7 +162,7 @@ set_light_backlight(struct light_device_t* dev,
     int brightness = rgb_to_brightness(state);
     pthread_mutex_lock(&g_lock);
     g_backlight = brightness;
-    err = write_int("/sys/class/leds/lcd-backlight/brightness", brightness);
+    err = write_int(LCD_FILE, brightness);
     if (g_haveTrackballLight) {
         handle_trackball_light_locked(dev);
     }
@@ -147,7 +177,7 @@ set_light_keyboard(struct light_device_t* dev,
     int err = 0;
     int on = is_lit(state);
     pthread_mutex_lock(&g_lock);
-    err = write_int("/sys/class/leds/keyboard-backlight/brightness", on?255:0);
+    err = write_int(KEYBOARD_FILE, on?255:0);
     pthread_mutex_unlock(&g_lock);
     return err;
 }
@@ -160,7 +190,7 @@ set_light_buttons(struct light_device_t* dev,
     int on = is_lit(state);
     pthread_mutex_lock(&g_lock);
     g_buttons = on;
-    err = write_int("/sys/class/leds/button-backlight/brightness", on?255:0);
+    err = write_int(BUTTON_FILE, on?255:0);
     pthread_mutex_unlock(&g_lock);
     return err;
 }
@@ -199,18 +229,18 @@ set_speaker_light_locked(struct light_device_t* dev,
     blue = colorRGB & 0xFF;
 
     if (!g_haveAmberLed) {
-        write_int("/sys/class/leds/red/brightness", red);
-        write_int("/sys/class/leds/green/brightness", green);
-        write_int("/sys/class/leds/blue/brightness", blue);
+        write_int(RED_LED_FILE, red);
+        write_int(GREEN_LED_FILE, green);
+        write_int(BLUE_LED_FILE, blue);
     } else {
         /* all of related red led is replaced by amber */
         if (red)
-            write_int("/sys/class/leds/amber/brightness", 1);
+            write_int(AMBER_LED_FILE, 1);
         else if (green)
-            write_int("/sys/class/leds/green/brightness", 1);
+            write_int(GREEN_LED_FILE, 1);
         else {
-            write_int("/sys/class/leds/green/brightness", 0);
-            write_int("/sys/class/leds/amber/brightness", 0);
+            write_int(GREEN_LED_FILE, 0);
+            write_int(AMBER_LED_FILE, 0);
         }
     }
 
@@ -238,12 +268,12 @@ set_speaker_light_locked(struct light_device_t* dev,
     
     if (!g_haveAmberLed) {
         if (blink) {
-            write_int("/sys/class/leds/red/device/grpfreq", freq);
-            write_int("/sys/class/leds/red/device/grppwm", pwm);
+            write_int(RED_FREQ_FILE, freq);
+            write_int(RED_PWM_FILE, pwm);
         }
-        write_int("/sys/class/leds/red/device/blink", blink);
+        write_int(RED_BLINK_FILE, blink);
     } else {
-        write_int("/sys/class/leds/amber/blink", blink);
+        write_int(AMBER_BLINK_FILE, blink);
     }
 
     return 0;
