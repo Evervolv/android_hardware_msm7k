@@ -1388,9 +1388,9 @@ status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_h
 
     float volume = computeVolume(stream, index, device);
     // do not set volume if the float value did not change
-    if (volume != mStreams[stream].mCurVolume) {
+    if (volume != mOutputs.valueFor(output)->mCurVolume[stream]) {
         mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, volume, output, delayMs);
-        mStreams[stream].mCurVolume = volume;
+        mOutputs.valueFor(output)->mCurVolume[stream] = volume;
         LOGV("setStreamVolume() for output %d stream %d, volume %f, delay %d", output, stream, volume, delayMs);
     }
 
@@ -1481,6 +1481,7 @@ AudioPolicyManager::AudioOutputDescriptor::AudioOutputDescriptor()
     // clear usage count for all stream types
     for (int i = 0; i < AudioSystem::NUM_STREAM_TYPES; i++) {
         mRefCount[i] = 0;
+        mCurVolume[i] = -1.0;
     }
 }
 

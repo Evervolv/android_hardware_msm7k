@@ -104,6 +104,7 @@ private:
             uint32_t mRefCount[AudioSystem::NUM_STREAM_TYPES]; // number of streams of each type using this output
             AudioOutputDescriptor *mOutput1;    // used by duplicated outputs: first output
             AudioOutputDescriptor *mOutput2;    // used by duplicated outputs: second output
+            float mCurVolume[AudioSystem::NUM_STREAM_TYPES];   // current stream volume
         };
 
         // descriptor for audio inputs. Used to maintain current configuration of each opened audio input
@@ -126,14 +127,13 @@ private:
         {
         public:
             StreamDescriptor()
-            :   mIndexMin(0), mIndexMax(1), mIndexCur(1), mMuteCount(0), mCanBeMuted(true), mCurVolume(-1.0) {}
+            :   mIndexMin(0), mIndexMax(1), mIndexCur(1), mMuteCount(0), mCanBeMuted(true) {}
 
             int mIndexMin;      // min volume index
             int mIndexMax;      // max volume index
             int mIndexCur;      // current volume index
             int mMuteCount;     // mute request counter
             bool mCanBeMuted;   // true is the stream can be muted
-            float mCurVolume;   // current stream volume
         };
 
         // return the strategy corresponding to a given stream type
