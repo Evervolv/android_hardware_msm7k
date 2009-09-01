@@ -73,12 +73,16 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
             if (AudioSystem::isA2dpDevice(device)) {
                 // when an A2DP device is connected, open an A2DP and a duplicated output
                 LOGV("opening A2DP output for device %s", device_address);
-                mA2dpOutput = mpClientInterface->openOutput(
-                        (uint32_t *)&device, 0, 0, 0, 0, (AudioSystem::output_flags)0);
+                AudioOutputDescriptor *outputDesc = new AudioOutputDescriptor();
+                outputDesc->mDevice = device;
+                mA2dpOutput = mpClientInterface->openOutput(&outputDesc->mDevice,
+                                                        &outputDesc->mSamplingRate,
+                                                        &outputDesc->mFormat,
+                                                        &outputDesc->mChannels,
+                                                        &outputDesc->mLatency,
+                                                        outputDesc->mFlags);
                 if (mA2dpOutput) {
                     // add A2DP output descriptor
-                    AudioOutputDescriptor *outputDesc = new AudioOutputDescriptor();
-                    outputDesc->mDevice = (uint32_t)device;
                     mOutputs.add(mA2dpOutput, outputDesc);
                     // set initial stream volume for A2DP device
                     applyStreamVolumes(mA2dpOutput, device);
@@ -92,21 +96,26 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                         mA2dpDeviceAddress = String8(device_address, MAX_DEVICE_ADDRESS_LEN);
 
                         // add duplicated output descriptor
-                        AudioOutputDescriptor *outputDesc = new AudioOutputDescriptor();
-                        outputDesc->mOutput1 = mOutputs.valueFor(mHardwareOutput);
-                        outputDesc->mOutput2 = mOutputs.valueFor(mA2dpOutput);
-                        mOutputs.add(mDuplicatedOutput, outputDesc);
-
+                        AudioOutputDescriptor *dupOutputDesc = new AudioOutputDescriptor();
+                        dupOutputDesc->mOutput1 = mOutputs.valueFor(mHardwareOutput);
+                        dupOutputDesc->mOutput2 = mOutputs.valueFor(mA2dpOutput);
+                        dupOutputDesc->mSamplingRate = outputDesc->mSamplingRate;
+                        dupOutputDesc->mFormat = outputDesc->mFormat;
+                        dupOutputDesc->mChannels = outputDesc->mChannels;
+                        dupOutputDesc->mLatency = outputDesc->mLatency;
+                        mOutputs.add(mDuplicatedOutput, dupOutputDesc);
                         applyStreamVolumes(mDuplicatedOutput, device);
                     } else {
                         LOGW("getOutput() could not open duplicated output for %d and %d",
                                 mHardwareOutput, mA2dpOutput);
                         mAvailableOutputDevices &= ~device;
+                        delete outputDesc;
                         return NO_INIT;
                     }
                 } else {
                     LOGW("setDeviceConnectionState() could not open A2DP output for device %x", device);
                     mAvailableOutputDevices &= ~device;
+                    delete outputDesc;
                     return NO_INIT;
                 }
                 // move streams pertaining to STRATEGY_MEDIA to the newly opened A2DP output
