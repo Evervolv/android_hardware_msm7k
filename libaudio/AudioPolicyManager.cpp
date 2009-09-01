@@ -118,13 +118,14 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     delete outputDesc;
                     return NO_INIT;
                 }
+                AudioOutputDescriptor *hwOutputDesc = mOutputs.valueFor(mHardwareOutput);
                 // move streams pertaining to STRATEGY_MEDIA to the newly opened A2DP output
                 if (getDeviceForStrategy(STRATEGY_MEDIA) & device) {
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                         if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_MEDIA) {
                             mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
-                            mOutputs.valueFor(mA2dpOutput)->mRefCount[i] = mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
-                            mOutputs.valueFor(mHardwareOutput)->mRefCount[i] = 0;
+                            outputDesc->mRefCount[i] = hwOutputDesc->mRefCount[i];
+                            hwOutputDesc->mRefCount[i] = 0;
                         }
                     }
 
@@ -134,8 +135,8 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                         if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
                             mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
-                            mOutputs.valueFor(mA2dpOutput)->mRefCount[i] = mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
-                            mOutputs.valueFor(mHardwareOutput)->mRefCount[i] = 0;
+                            outputDesc->mRefCount[i] = hwOutputDesc->mRefCount[i];
+                            hwOutputDesc->mRefCount[i] = 0;
                         }
                     }
 
@@ -145,10 +146,10 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                         if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
                             mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mDuplicatedOutput);
-                            mOutputs.valueFor(mA2dpOutput)->mRefCount[i] =
-                                mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
+                            outputDesc->mRefCount[i] =
+                                hwOutputDesc->mRefCount[i];
                             mOutputs.valueFor(mDuplicatedOutput)->mRefCount[i] =
-                                mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
+                                hwOutputDesc->mRefCount[i];
                         }
                     }
                 }
@@ -263,17 +264,25 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     return INVALID_OPERATION;
                 }
 
+                AudioOutputDescriptor *hwOutputDesc = mOutputs.valueFor(mHardwareOutput);
+                AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
+
+                // mute media during 2 seconds to avoid outputing sound on hardware output while music stream
+                // is switched from A2DP output and before music is paused by music application
+                setStrategyMute(STRATEGY_MEDIA, true, mHardwareOutput);
+                setStrategyMute(STRATEGY_MEDIA, false, mHardwareOutput, 2000);
+
                 // If the A2DP device was used by DTMF strategy, move all streams pertaining to DTMF strategy to
                 // hardware output
                 if (wasUsedforDtmf) {
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                         if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
                             mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
-                            mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i,
-                                    mOutputs.valueFor(mA2dpOutput)->mRefCount[i]);
+                            hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                    a2dpOutputDesc->mRefCount[i]);
                         }
                     }
-                    if (mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
+                    if (a2dpOutputDesc->isUsedByStrategy(STRATEGY_DTMF)) {
                         newDevice = getDeviceForStrategy(STRATEGY_DTMF);
                     }
                 }
@@ -284,11 +293,11 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                         if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_MEDIA) {
                             mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
-                            mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i,
-                                    mOutputs.valueFor(mA2dpOutput)->mRefCount[i]);
+                            hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                    a2dpOutputDesc->mRefCount[i]);
                         }
                     }
-                    if (mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_MEDIA)) {
+                    if (a2dpOutputDesc->isUsedByStrategy(STRATEGY_MEDIA)) {
                         newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
                     }
                 }
@@ -303,7 +312,7 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                             mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
                         }
                     }
-                    if (mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_SONIFICATION)) {
+                    if (a2dpOutputDesc->isUsedByStrategy(STRATEGY_SONIFICATION)) {
                         newDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
                     }
                 }
