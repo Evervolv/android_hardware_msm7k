@@ -520,6 +520,10 @@ CLIENT *clnt_create(
     if (client) {
         char name[256];
 
+        /* for versions like 0x00010001, only compare against major version */
+        if ((vers & 0xFFF00000) == 0)
+            vers &= 0xFFFF0000;
+
         pthread_mutex_lock(&rx_mutex);
 
         snprintf(name, sizeof(name), "/dev/oncrpc/%08x:%08x",
