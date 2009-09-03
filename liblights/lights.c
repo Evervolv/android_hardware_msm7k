@@ -234,11 +234,13 @@ set_speaker_light_locked(struct light_device_t* dev,
         write_int(BLUE_LED_FILE, blue);
     } else {
         /* all of related red led is replaced by amber */
-        if (red)
+        if (red) {
             write_int(AMBER_LED_FILE, 1);
-        else if (green)
+            write_int(GREEN_LED_FILE, 0);
+        } else if (green) {
+            write_int(AMBER_LED_FILE, 0);
             write_int(GREEN_LED_FILE, 1);
-        else {
+        } else {
             write_int(GREEN_LED_FILE, 0);
             write_int(AMBER_LED_FILE, 0);
         }
