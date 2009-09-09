@@ -17,7 +17,7 @@
 
 #include <stdint.h>
 #include <sys/types.h>
-
+#include <utils/Timers.h>
 #include <utils/Errors.h>
 #include <utils/KeyedVector.h>
 #include <hardware_legacy/AudioPolicyInterface.h>
@@ -28,7 +28,13 @@ namespace android {
 // ----------------------------------------------------------------------------
 
 #define MAX_DEVICE_ADDRESS_LEN 20
-
+// Attenuation applied to STRATEGY_SONIFICATION streams when a headset is connected: 6dB
+#define SONIFICATION_HEADSET_VOLUME_FACTOR 0.5
+// Min volume for STRATEGY_SONIFICATION streams when limited by music volume: -36dB
+#define SONIFICATION_HEADSET_VOLUME_MIN  0.016
+// Time in seconds during which we consider that music is still active after a music
+// track was stopped - see computeVolume()
+#define SONIFICATION_HEADSET_MUSIC_DELAY  5
 class AudioPolicyManager: public AudioPolicyInterface
 {
 
@@ -148,7 +154,7 @@ private:
         void setOutputDevice(audio_io_handle_t output, uint32_t device, bool force = false, int delayMs = 0);
         // compute the actual volume for a given stream according to the requested index and a particular
         // device
-        float computeVolume(int stream, int index, uint32_t device);
+        float computeVolume(int stream, int index, audio_io_handle_t output, uint32_t device);
         // check that volume change is permitted, compute and send new volume to audio hardware
         status_t checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device, int delayMs = 0);
         // apply all stream volumes to the specified output and device
@@ -177,6 +183,7 @@ private:
         StreamDescriptor mStreams[AudioSystem::NUM_STREAM_TYPES];           // stream descriptors for volume control
         String8 mA2dpDeviceAddress;                                         // A2DP device MAC address
         String8 mScoDeviceAddress;                                          // SCO device MAC address
+        nsecs_t mMusicStopTime;                                             // time when last music stream was stopped
 };
 
 };

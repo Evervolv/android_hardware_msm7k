@@ -814,6 +814,9 @@ status_t AudioPolicyManager::startOutput(audio_io_handle_t output, AudioSystem::
         handleIncallSonification(stream, true);
     }
 
+    // apply volume rules for current stream and device if necessary
+    checkAndSetVolume(stream, mStreams[stream].mIndexCur, output, outputDesc->device());
+
     return NO_ERROR;
 }
 
@@ -859,6 +862,10 @@ status_t AudioPolicyManager::stopOutput(audio_io_handle_t output, AudioSystem::s
             // buffers in audio flinger and audio hardware are emptied before the
             // routing change is executed.
             setOutputDevice(mHardwareOutput, newDevice, false, mOutputs.valueFor(mHardwareOutput)->mLatency*2);
+        }
+        // store time at which the last music track was stopped - see computeVolume()
+        if (stream == AudioSystem::MUSIC) {
+            mMusicStopTime = systemTime();
         }
         return NO_ERROR;
     } else {
@@ -1070,7 +1077,7 @@ extern "C" void destroyAudioPolicyManager(AudioPolicyInterface *interface)
 }
 
 AudioPolicyManager::AudioPolicyManager(AudioPolicyClientInterface *clientInterface)
-: mPhoneState(AudioSystem::MODE_NORMAL), mRingerMode(0)
+: mPhoneState(AudioSystem::MODE_NORMAL), mRingerMode(0), mMusicStopTime(0)
 {
     mpClientInterface = clientInterface;
 
@@ -1363,7 +1370,7 @@ void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t devi
     }
 }
 
-float AudioPolicyManager::computeVolume(int stream, int index, uint32_t device)
+float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t output, uint32_t device)
 {
     float volume = 1.0;
 
@@ -1372,18 +1379,36 @@ float AudioPolicyManager::computeVolume(int stream, int index, uint32_t device)
     // Force max volume if stream cannot be muted
     if (!streamDesc.mCanBeMuted) index = streamDesc.mIndexMax;
 
-    // Always fall back to a single device: give priority to speaker volume settings
-    if (AudioSystem::popCount((AudioSystem::audio_devices)device) == 2) {
-        device = AudioSystem::DEVICE_OUT_SPEAKER;
+    int volInt = (100 * (index - streamDesc.mIndexMin)) / (streamDesc.mIndexMax - streamDesc.mIndexMin);
+    volume = AudioSystem::linearToLog(volInt);
+
+    // if a heaset is connected, apply the following rules to ring tones and notifications
+    // to avoid sound level bursts in user's ears:
+    // - always attenuate ring tones and notifications volume by 6dB
+    // - if music is playing, always limit the volume to current music volume,
+    // with a minimum threshold at -36dB so that notification is always perceived.
+    if ((device &
+        (AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP |
+        AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES |
+        AudioSystem::DEVICE_OUT_WIRED_HEADSET |
+        AudioSystem::DEVICE_OUT_WIRED_HEADPHONE)) &&
+        (getStrategy((AudioSystem::stream_type)stream) == STRATEGY_SONIFICATION)) {
+        volume *= SONIFICATION_HEADSET_VOLUME_FACTOR;
+        // when the phone is ringing we must consider that music could have been paused just before
+        // by the music application and behave as if music was active if the last music track was
+        // just stopped
+        if (mOutputs.valueFor(output)->isUsedByStream(AudioSystem::MUSIC) ||
+            ((mPhoneState == AudioSystem::MODE_RINGTONE) &&
+             (systemTime() - mMusicStopTime < seconds(SONIFICATION_HEADSET_MUSIC_DELAY)))) {
+            float musicVol = computeVolume(AudioSystem::MUSIC, mStreams[AudioSystem::MUSIC].mIndexCur, output, device);
+            float minVol = (musicVol > SONIFICATION_HEADSET_VOLUME_MIN) ? musicVol : SONIFICATION_HEADSET_VOLUME_MIN;
+            if (volume > minVol) {
+                volume = minVol;
+                LOGV("computeVolume limiting volume to %f musicVol %f", minVol, musicVol);
+            }
+        }
     }
 
-    // TODO: implement device dependent code here
-    switch (device) {
-    default:
-        int volInt = (100 * (index - streamDesc.mIndexMin)) / (streamDesc.mIndexMax - streamDesc.mIndexMin);
-        volume = AudioSystem::linearToLog(volInt);
-        break;
-    }
     return volume;
 }
 
@@ -1404,7 +1429,7 @@ status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_h
         return INVALID_OPERATION;
     }
 
-    float volume = computeVolume(stream, index, device);
+    float volume = computeVolume(stream, index, output, device);
     // do not set volume if the float value did not change
     if (volume != mOutputs.valueFor(output)->mCurVolume[stream]) {
         mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, volume, output, delayMs);
