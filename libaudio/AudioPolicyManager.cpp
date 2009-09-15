@@ -497,6 +497,7 @@ void AudioPolicyManager::setPhoneState(int state)
     // store previous phone state for management of sonification strategy below
     int oldState = mPhoneState;
     uint32_t oldDtmfDevice = getDeviceForStrategy(STRATEGY_DTMF);
+    uint32_t oldSonificationDevice = getDeviceForStrategy(STRATEGY_SONIFICATION) & ~AudioSystem::DEVICE_OUT_SPEAKER;
     mPhoneState = state;
     bool force = false;
     // check if a routing change is required for hardware output in the following
@@ -518,32 +519,72 @@ void AudioPolicyManager::setPhoneState(int state)
         newDevice = getDeviceForStrategy(STRATEGY_DTMF);
     }
 
+    // if leaving call state, handle special case of active streams
+    // pertaining to sonification strategy see handleIncallSonification()
+    if (oldState == AudioSystem::MODE_IN_CALL) {
+        LOGV("setPhoneState() in call state management: new state is %d", state);
+        for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
+            handleIncallSonification(stream, false);
+        }
+    }
+
     if (mA2dpOutput != 0) {
         // If entering or exiting in call state, switch DTMF streams to/from A2DP output
         // if necessary
         uint32_t newDtmfDevice = getDeviceForStrategy(STRATEGY_DTMF);
-        if (state == AudioSystem::MODE_IN_CALL) {
+        uint32_t newSonificationDevice = getDeviceForStrategy(STRATEGY_SONIFICATION) & ~AudioSystem::DEVICE_OUT_SPEAKER;
+        if (state == AudioSystem::MODE_IN_CALL) {  // entering in call mode
+            // move DTMF streams from A2DP output to hardware output if necessary
             if (AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
                 !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
                 for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                     if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
                         mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                        int refCount = mOutputs.valueFor(mA2dpOutput)->mRefCount[i];
                         mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i,
-                                mOutputs.valueFor(mA2dpOutput)->mRefCount[i]);
+                                refCount);
+                        mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i,-refCount);
                     }
                 }
                 if (newDevice == 0 && mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
                     newDevice = newDtmfDevice;
                 }
             }
-        } else {
+            // move SONIFICATION streams from duplicated output to hardware output if necessary
+            if (AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldSonificationDevice) &&
+                !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newSonificationDevice)) {
+                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
+                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                        int refCount = mOutputs.valueFor(mDuplicatedOutput)->mRefCount[i];
+                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i,
+                                refCount);
+                        mOutputs.valueFor(mDuplicatedOutput)->changeRefCount((AudioSystem::stream_type)i,-refCount);
+                    }
+                }
+            }
+        } else {  // exiting in call mode
+            // move DTMF streams from hardware output to A2DP output if necessary
             if (!AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
                 AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
                 for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                     if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
                         mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
-                        mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i,
-                                mOutputs.valueFor(mHardwareOutput)->mRefCount[i]);
+                        int refCount = mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
+                        mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
+                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i, -refCount);
+                    }
+                }
+            }
+            // move SONIFICATION streams from hardware output to A2DP output if necessary
+            if (!AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldSonificationDevice) &&
+                AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newSonificationDevice)) {
+                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
+                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mDuplicatedOutput);
+                        int refCount = mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
+                        mOutputs.valueFor(mDuplicatedOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
+                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i, -refCount);
                     }
                 }
             }
@@ -560,6 +601,15 @@ void AudioPolicyManager::setPhoneState(int state)
         }
     }
 
+    // if entering in call state, handle special case of active streams
+    // pertaining to sonification strategy see handleIncallSonification()
+    if (state == AudioSystem::MODE_IN_CALL) {
+        LOGV("setPhoneState() in call state management: new state is %d", state);
+        for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
+            handleIncallSonification(stream, true);
+        }
+    }
+
     // force routing command to audio hardware when ending call
     // even if no device change is needed
     if (oldState == AudioSystem::MODE_IN_CALL) {
@@ -570,17 +620,6 @@ void AudioPolicyManager::setPhoneState(int state)
     }
     // change routing is necessary
     setOutputDevice(mHardwareOutput, newDevice, force);
-
-    // if leaving or entering in call state, handle special case of active streams
-    // pertaining to sonification strategy see handleIncallSonification()
-    if (state == AudioSystem::MODE_IN_CALL ||
-        oldState == AudioSystem::MODE_IN_CALL) {
-        bool starting = (state == AudioSystem::MODE_IN_CALL) ? true : false;
-        LOGV("setPhoneState() in call state management: new state is %d", state);
-        for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
-            handleIncallSonification(stream, starting);
-        }
-    }
 }
 
 void AudioPolicyManager::setRingerMode(uint32_t mode, uint32_t mask)
