@@ -989,15 +989,12 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         LOGV("channel_count: %u", config.channel_count);
         LOGV("sample_rate: %u", config.sample_rate);
 
-        // fill 2 buffers before AUDIO_START
-        mStartCount = AUDIO_HW_NUM_OUT_BUF;
-        mStandby = false;
-    }
-
-    if (mStartCount) {
-        if (--mStartCount == 0) {
-            ioctl(mFd, AUDIO_START, 0);
+        status = ioctl(mFd, AUDIO_START, 0);
+        if (status < 0) {
+            LOGE("Cannot start pcm playback");
+            goto Error;
         }
+        mStandby = false;
     }
 
     while (count) {
