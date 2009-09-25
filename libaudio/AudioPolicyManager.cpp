@@ -494,6 +494,16 @@ void AudioPolicyManager::setPhoneState(int state)
         LOGW("setPhoneState() setting same state %d", state);
         return;
     }
+
+    // if leaving call state, handle special case of active streams
+    // pertaining to sonification strategy see handleIncallSonification()
+    if (mPhoneState == AudioSystem::MODE_IN_CALL) {
+        LOGV("setPhoneState() in call state management: new state is %d", state);
+        for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
+            handleIncallSonification(stream, false, true);
+        }
+    }
+
     // store previous phone state for management of sonification strategy below
     int oldState = mPhoneState;
     uint32_t oldDtmfDevice = getDeviceForStrategy(STRATEGY_DTMF);
@@ -519,14 +529,6 @@ void AudioPolicyManager::setPhoneState(int state)
         newDevice = getDeviceForStrategy(STRATEGY_DTMF);
     }
 
-    // if leaving call state, handle special case of active streams
-    // pertaining to sonification strategy see handleIncallSonification()
-    if (oldState == AudioSystem::MODE_IN_CALL) {
-        LOGV("setPhoneState() in call state management: new state is %d", state);
-        for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
-            handleIncallSonification(stream, false);
-        }
-    }
 
     if (mA2dpOutput != 0) {
         // If entering or exiting in call state, switch DTMF streams to/from A2DP output
@@ -601,15 +603,6 @@ void AudioPolicyManager::setPhoneState(int state)
         }
     }
 
-    // if entering in call state, handle special case of active streams
-    // pertaining to sonification strategy see handleIncallSonification()
-    if (state == AudioSystem::MODE_IN_CALL) {
-        LOGV("setPhoneState() in call state management: new state is %d", state);
-        for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
-            handleIncallSonification(stream, true);
-        }
-    }
-
     // force routing command to audio hardware when ending call
     // even if no device change is needed
     if (oldState == AudioSystem::MODE_IN_CALL) {
@@ -620,6 +613,15 @@ void AudioPolicyManager::setPhoneState(int state)
     }
     // change routing is necessary
     setOutputDevice(mHardwareOutput, newDevice, force);
+
+    // if entering in call state, handle special case of active streams
+    // pertaining to sonification strategy see handleIncallSonification()
+    if (state == AudioSystem::MODE_IN_CALL) {
+        LOGV("setPhoneState() in call state management: new state is %d", state);
+        for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
+            handleIncallSonification(stream, true, true);
+        }
+    }
 }
 
 void AudioPolicyManager::setRingerMode(uint32_t mode, uint32_t mask)
@@ -854,7 +856,7 @@ status_t AudioPolicyManager::startOutput(audio_io_handle_t output, AudioSystem::
 
     // handle special case for sonification while in call
     if (mPhoneState == AudioSystem::MODE_IN_CALL) {
-        handleIncallSonification(stream, true);
+        handleIncallSonification(stream, true, false);
     }
 
     // apply volume rules for current stream and device if necessary
@@ -877,7 +879,7 @@ status_t AudioPolicyManager::stopOutput(audio_io_handle_t output, AudioSystem::s
 
     // handle special case for sonification while in call
     if (mPhoneState == AudioSystem::MODE_IN_CALL) {
-        handleIncallSonification(stream, false);
+        handleIncallSonification(stream, false, false);
     }
 
     if (outputDesc->isUsedByStrategy(strategy)) {
@@ -1528,24 +1530,36 @@ void AudioPolicyManager::setStreamMute(int stream, bool on, audio_io_handle_t ou
     }
 }
 
-void AudioPolicyManager::handleIncallSonification(int stream, bool starting)
+void AudioPolicyManager::handleIncallSonification(int stream, bool starting, bool stateChange)
 {
     // if the stream pertains to sonification strategy and we are in call we must
     // mute the stream if it is low visibility. If it is high visibility, we must play a tone
     // in the device used for phone strategy and play the tone if the selected device does not
     // interfere with the device used for phone strategy
+    // if stateChange is true, we are called from setPhoneState() and we must mute or unmute as
+    // many times as there are active tracks on the output
+
     if (getStrategy((AudioSystem::stream_type)stream) == STRATEGY_SONIFICATION) {
         AudioOutputDescriptor *outputDesc = mOutputs.valueFor(mHardwareOutput);
-        LOGV("handleIncallSonification() stream %d starting %d device %x", stream, starting, outputDesc->mDevice);
+        LOGV("handleIncallSonification() stream %d starting %d device %x stateChange %d",
+                stream, starting, outputDesc->mDevice, stateChange);
         if (outputDesc->isUsedByStream((AudioSystem::stream_type)stream)) {
+            int muteCount = 1;
+            if (stateChange) {
+                muteCount = outputDesc->mRefCount[stream];
+            }
             if (AudioSystem::isLowVisibility((AudioSystem::stream_type)stream)) {
-                LOGV("handleIncallSonification() low visibility");
-                setStreamMute(stream, starting, mHardwareOutput);
+                LOGV("handleIncallSonification() low visibility, muteCount %d", muteCount);
+                for (int i = 0; i < muteCount; i++) {
+                    setStreamMute(stream, starting, mHardwareOutput);
+                }
             } else {
                 LOGV("handleIncallSonification() high visibility ");
                 if (outputDesc->mDevice & getDeviceForStrategy(STRATEGY_PHONE)) {
-                    LOGV("handleIncallSonification() high visibility muted");
-                    setStreamMute(stream, starting, mHardwareOutput);
+                    LOGV("handleIncallSonification() high visibility muted, muteCount %d", muteCount);
+                    for (int i = 0; i < muteCount; i++) {
+                        setStreamMute(stream, starting, mHardwareOutput);
+                    }
                 }
                 if (starting) {
                     mpClientInterface->startTone(ToneGenerator::TONE_SUP_CALL_WAITING, AudioSystem::VOICE_CALL);
