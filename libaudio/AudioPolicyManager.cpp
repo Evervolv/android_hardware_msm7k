@@ -641,8 +641,12 @@ void AudioPolicyManager::setForceUse(AudioSystem::force_use usage, AudioSystem::
             return;
         }
         mForceUse[usage] = config;
-        // if in call, update hardware output routing immediately
-        if (mPhoneState == AudioSystem::MODE_IN_CALL) {
+        // update hardware output routing immediately if in call, or if there is an active
+        // VOICE_CALL stream, as would be the case with an application that uses this stream
+        // for it to behave like in a telephony app (e.g. voicemail app that plays audio files
+        // streamed or downloaded to the device)
+        if ((mPhoneState == AudioSystem::MODE_IN_CALL) ||
+                (mOutputs.valueFor(mHardwareOutput)->isUsedByStream(AudioSystem::VOICE_CALL))) {
             uint32_t device = getDeviceForStrategy(STRATEGY_PHONE);
             setOutputDevice(mHardwareOutput, device);
         }
