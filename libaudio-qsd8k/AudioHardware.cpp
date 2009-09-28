@@ -587,39 +587,10 @@ open_drv_err:
 }
 
 status_t AudioHardware::get_snd_dev(void)
+
 {
     Mutex::Autolock lock(mLock);
-    uint32_t routes = mRoutes[mMode];
-    status_t ret = NO_ERROR;
-
-    if (routes & ROUTE_BLUETOOTH_SCO) {
-        ret = SND_DEVICE_BT;
-    } else if ((routes & ROUTE_HEADSET) &&
-               (routes & ROUTE_SPEAKER)) {
-        ret = SND_DEVICE_HEADSET_AND_SPEAKER;
-    } else if (routes & ROUTE_FM_SPEAKER) {
-        ret = SND_DEVICE_FM_SPEAKER;
-    } else if (routes & ROUTE_FM_HEADSET) {
-        if (routes & ROUTE_SPEAKER) {
-            ret = SND_DEVICE_HEADSET_AND_SPEAKER;
-        } else {
-            ret = SND_DEVICE_FM_HEADSET;
-        }
-    } else if (routes & ROUTE_NO_MIC_HEADSET) {
-        if (routes & ROUTE_SPEAKER) {
-            ret = SND_DEVICE_HEADSET_AND_SPEAKER;
-        } else {
-            ret = SND_DEVICE_NO_MIC_HEADSET;
-        }
-    } else if (routes & ROUTE_HEADSET) {
-        ret = SND_DEVICE_HEADSET;
-    } else if (routes & ROUTE_SPEAKER) {
-        ret = SND_DEVICE_SPEAKER;
-    } else {
-        ret = SND_DEVICE_HANDSET;
-    }
-
-    return ret;
+    return mCurSndDevice;
 }
 
 status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t Routes)
