@@ -165,7 +165,7 @@ private:
         void setStreamMute(int stream, bool on, audio_io_handle_t output, int delayMs = 0);
         // handle special cases for sonification strategy while in call: mute streams or replace by
         // a special tone in the device used for communication
-        void handleIncallSonification(int stream, bool starting);
+        void handleIncallSonification(int stream, bool starting, bool stateChange);
 
         AudioPolicyClientInterface *mpClientInterface;  // audio policy client interface
         audio_io_handle_t mHardwareOutput;              // hardware output handler
