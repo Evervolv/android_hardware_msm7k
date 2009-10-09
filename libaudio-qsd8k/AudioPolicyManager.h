@@ -17,7 +17,7 @@
 
 #include <stdint.h>
 #include <sys/types.h>
-
+#include <utils/Timers.h>
 #include <utils/Errors.h>
 #include <utils/KeyedVector.h>
 #include <hardware_legacy/AudioPolicyInterface.h>
@@ -28,6 +28,13 @@ namespace android {
 // ----------------------------------------------------------------------------
 
 #define MAX_DEVICE_ADDRESS_LEN 20
+// Attenuation applied to STRATEGY_SONIFICATION streams when a headset is connected: 6dB
+#define SONIFICATION_HEADSET_VOLUME_FACTOR 0.5
+// Min volume for STRATEGY_SONIFICATION streams when limited by music volume: -36dB
+#define SONIFICATION_HEADSET_VOLUME_MIN  0.016
+// Time in seconds during which we consider that music is still active after a music
+// track was stopped - see computeVolume()
+#define SONIFICATION_HEADSET_MUSIC_DELAY  5
 
 class AudioPolicyManager: public AudioPolicyInterface
 {
@@ -148,7 +155,7 @@ private:
         void setOutputDevice(audio_io_handle_t output, uint32_t device, bool force = false, int delayMs = 0);
         // compute the actual volume for a given stream according to the requested index and a particular
         // device
-        float computeVolume(int stream, int index, uint32_t device);
+        float computeVolume(int stream, int index, audio_io_handle_t output, uint32_t device);
         // check that volume change is permitted, compute and send new volume to audio hardware
         status_t checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device, int delayMs = 0);
         // apply all stream volumes to the specified output and device
@@ -159,14 +166,14 @@ private:
         void setStreamMute(int stream, bool on, audio_io_handle_t output, int delayMs = 0);
         // handle special cases for sonification strategy while in call: mute streams or replace by
         // a special tone in the device used for communication
-        void handleIncallSonification(int stream, bool starting);
+        void handleIncallSonification(int stream, bool starting, bool stateChange);
 
         AudioPolicyClientInterface *mpClientInterface;  // audio policy client interface
         audio_io_handle_t mHardwareOutput;              // hardware output handler
         audio_io_handle_t mA2dpOutput;                  // A2DP output handler
         audio_io_handle_t mDuplicatedOutput;            // duplicated output handler: outputs to hardware and A2DP.
 
-        KeyedVector<audio_io_handle_t, AudioOutputDescriptor *> mOutputs;   // list ot output descritors
+        KeyedVector<audio_io_handle_t, AudioOutputDescriptor *> mOutputs;   // list of output descriptors
         KeyedVector<audio_io_handle_t, AudioInputDescriptor *> mInputs;     // list of input descriptors
         uint32_t mAvailableOutputDevices;                                   // bit field of all available output devices
         uint32_t mAvailableInputDevices;                                    // bit field of all available input devices
@@ -177,6 +184,7 @@ private:
         StreamDescriptor mStreams[AudioSystem::NUM_STREAM_TYPES];           // stream descriptors for volume control
         String8 mA2dpDeviceAddress;                                         // A2DP device MAC address
         String8 mScoDeviceAddress;                                          // SCO device MAC address
+        nsecs_t mMusicStopTime;                                             // time when last music stream was stopped
 };
 
 };
