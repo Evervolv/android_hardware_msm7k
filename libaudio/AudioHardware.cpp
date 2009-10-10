@@ -701,7 +701,7 @@ status_t AudioHardware::AudioStreamOutMSM72xx::set(
 
 AudioHardware::AudioStreamOutMSM72xx::~AudioStreamOutMSM72xx()
 {
-    if (mFd > 0) close(mFd);
+    if (mFd >= 0) close(mFd);
 }
 
 ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t bytes)
@@ -774,7 +774,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
     return bytes;
 
 Error:
-    if (mFd > 0) {
+    if (mFd >= 0) {
         ::close(mFd);
         mFd = -1;
     }
@@ -787,7 +787,7 @@ Error:
 status_t AudioHardware::AudioStreamOutMSM72xx::standby()
 {
     status_t status = NO_ERROR;
-    if (!mStandby && mFd > 0) {
+    if (!mStandby && mFd >= 0) {
         ::close(mFd);
         mFd = -1;
     }
@@ -990,7 +990,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     return NO_ERROR;
 
 Error:
-    if (mFd > 0) {
+    if (mFd >= 0) {
         ::close(mFd);
         mFd = -1;
     }
@@ -1044,7 +1044,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::standby()
 {
     if (!mHardware) return -1;
     if (mState > AUDIO_INPUT_CLOSED) {
-        if (mFd > 0) {
+        if (mFd >= 0) {
             ::close(mFd);
             mFd = -1;
         }
