@@ -207,19 +207,17 @@ bool AudioHardware::checkOutputStandby()
 
     return true;
 }
-static status_t set_mic_mute(bool mute)
+static status_t set_mic_mute(bool _mute)
 {
-    int fd = -1, arg;
-    struct msm_mute_info info;
+    uint32_t mute = _mute;
+    int fd = -1;
     fd = open("/dev/msm_audio_ctl", O_RDWR);
     if (fd < 0) {
         LOGE("Cannot open msm_audio_ctl device\n");
         return -1;
     }
     LOGD("Setting mic mute to %d\n", mute);
-    info.path = TX_PATH;
-    info.mute = mute;
-    if (ioctl(fd, AUDIO_SET_MUTE, &info)) {
+    if (ioctl(fd, AUDIO_SET_MUTE, &mute)) {
         LOGE("Cannot set mic mute on current device\n");
         close(fd);
         return -1;
