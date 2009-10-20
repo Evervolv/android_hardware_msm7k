@@ -119,6 +119,18 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     return NO_INIT;
                 }
                 AudioOutputDescriptor *hwOutputDesc = mOutputs.valueFor(mHardwareOutput);
+
+                if (mA2dpDeviceAddress == mScoDeviceAddress) {
+                    // It is normal to suspend twice if we are both in call,
+                    // and have the hardware audio output routed to BT SCO
+                    if (mPhoneState != AudioSystem::MODE_NORMAL) {
+                        mpClientInterface->suspendOutput(mA2dpOutput);
+                    }
+                    if (AudioSystem::isBluetoothScoDevice((AudioSystem::audio_devices)hwOutputDesc->device())) {
+                        mpClientInterface->suspendOutput(mA2dpOutput);
+                    }
+                }
+
                 // move streams pertaining to STRATEGY_MEDIA to the newly opened A2DP output
                 if (getDeviceForStrategy(STRATEGY_MEDIA) & device) {
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
@@ -170,6 +182,10 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF) &&
                                getDeviceForStrategy(STRATEGY_DTMF) == device) {
                         newDevice = device;
+                    }
+                    if ((mA2dpDeviceAddress == mScoDeviceAddress) &&
+                        (mPhoneState != AudioSystem::MODE_NORMAL)) {
+                        mpClientInterface->suspendOutput(mA2dpOutput);
                     }
                 } else if (device == AudioSystem::DEVICE_OUT_WIRED_HEADSET ||
                            device == AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
@@ -343,6 +359,10 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     } else if (wasUsedforDtmf &&
                                mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
                         newDevice = getDeviceForStrategy(STRATEGY_DTMF);
+                    }
+                    if ((mA2dpDeviceAddress == mScoDeviceAddress) &&
+                        (mPhoneState != AudioSystem::MODE_NORMAL)) {
+                        mpClientInterface->restoreOutput(mA2dpOutput);
                     }
                 } else if (device == AudioSystem::DEVICE_OUT_WIRED_HEADSET ||
                            device == AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
@@ -594,9 +614,9 @@ void AudioPolicyManager::setPhoneState(int state)
         // no need to check that a SCO device is actually connected as mScoDeviceAddress == ""
         // if none is connected and the test below will fail.
         if (mA2dpDeviceAddress == mScoDeviceAddress) {
-            if (state == AudioSystem::MODE_RINGTONE) {
+            if (oldState == AudioSystem::MODE_NORMAL) {
                 mpClientInterface->suspendOutput(mA2dpOutput);
-            } else if (oldState == AudioSystem::MODE_RINGTONE) {
+            } else if (state == AudioSystem::MODE_NORMAL) {
                 mpClientInterface->restoreOutput(mA2dpOutput);
             }
         }
@@ -1389,7 +1409,6 @@ void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t devi
     // suspend A2D output if SCO device is selected
     if (AudioSystem::isBluetoothScoDevice((AudioSystem::audio_devices)device)) {
          if (mA2dpOutput && mScoDeviceAddress == mA2dpDeviceAddress) {
-             LOGV("suspend A2DP output");
              mpClientInterface->suspendOutput(mA2dpOutput);
          }
     }
