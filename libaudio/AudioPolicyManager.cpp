@@ -1069,6 +1069,10 @@ void AudioPolicyManager::initStreamVolume(AudioSystem::stream_type stream,
                                             int indexMax)
 {
     LOGV("initStreamVolume() stream %d, min %d, max %d", stream , indexMin, indexMax);
+    if (indexMin < 0 || indexMin >= indexMax) {
+        LOGW("initStreamVolume() invalid index limits for stream %d, min %d, max %d", stream , indexMin, indexMax);
+        return;
+    }
     mStreams[stream].mIndexMin = indexMin;
     mStreams[stream].mIndexMax = indexMax;
 }
@@ -1418,11 +1422,15 @@ void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t devi
 float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t output, uint32_t device)
 {
     float volume = 1.0;
-
+    AudioOutputDescriptor *outputDesc = mOutputs.valueFor(output);
     StreamDescriptor &streamDesc = mStreams[stream];
 
     // Force max volume if stream cannot be muted
     if (!streamDesc.mCanBeMuted) index = streamDesc.mIndexMax;
+
+    if (device == 0) {
+        device = outputDesc->device();
+    }
 
     int volInt = (100 * (index - streamDesc.mIndexMin)) / (streamDesc.mIndexMax - streamDesc.mIndexMin);
     volume = AudioSystem::linearToLog(volInt);
@@ -1442,7 +1450,7 @@ float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t
         // when the phone is ringing we must consider that music could have been paused just before
         // by the music application and behave as if music was active if the last music track was
         // just stopped
-        if (mOutputs.valueFor(output)->isUsedByStream(AudioSystem::MUSIC) ||
+        if (outputDesc->isUsedByStream(AudioSystem::MUSIC) ||
             ((mPhoneState == AudioSystem::MODE_RINGTONE) &&
              (systemTime() - mMusicStopTime < seconds(SONIFICATION_HEADSET_MUSIC_DELAY)))) {
             float musicVol = computeVolume(AudioSystem::MUSIC, mStreams[AudioSystem::MUSIC].mIndexCur, output, device);
@@ -1457,7 +1465,7 @@ float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t
     return volume;
 }
 
-status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device, int delayMs)
+status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_handle_t output, uint32_t device, int delayMs, bool force)
 {
 
     // do not change actual stream volume if the stream is muted
@@ -1474,12 +1482,28 @@ status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_h
         return INVALID_OPERATION;
     }
 
-    float volume = computeVolume(stream, index, output, device);
+    float volume = computeVolume(stream, index, output, device || force);
     // do not set volume if the float value did not change
     if (volume != mOutputs.valueFor(output)->mCurVolume[stream]) {
-        mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, volume, output, delayMs);
         mOutputs.valueFor(output)->mCurVolume[stream] = volume;
         LOGV("setStreamVolume() for output %d stream %d, volume %f, delay %d", output, stream, volume, delayMs);
+        if (stream == AudioSystem::VOICE_CALL ||
+            stream == AudioSystem::DTMF ||
+            stream == AudioSystem::BLUETOOTH_SCO) {
+            float voiceVolume = -1.0;
+            // offset value to reflect actual hardware volume that never reaches 0
+            // 1% corresponds roughly to first step in VOICE_CALL stream volume setting (see AudioService.java)
+            volume = 0.01 + 0.99 * volume;
+            if (stream == AudioSystem::VOICE_CALL) {
+                voiceVolume = (float)index/(float)mStreams[stream].mIndexMax;
+            } else if (stream == AudioSystem::BLUETOOTH_SCO) {
+                voiceVolume = 1.0;
+            }
+            if (voiceVolume >= 0 && output == mHardwareOutput) {
+                mpClientInterface->setVoiceVolume(voiceVolume, delayMs);
+            }
+        }
+        mpClientInterface->setStreamVolume((AudioSystem::stream_type)stream, volume, output, delayMs);
     }
 
     return NO_ERROR;
