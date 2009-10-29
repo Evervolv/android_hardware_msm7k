@@ -20,6 +20,7 @@
 #define LOG_TAG "AudioHardwareQSD"
 #include <utils/Log.h>
 #include <utils/String8.h>
+#include <hardware_legacy/power.h>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -80,6 +81,10 @@ int errCount = 0;
 const uint32_t AudioHardware::inputSamplingRates[] = {
         8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000
 };
+
+// ID string for audio wakelock
+static const char kOutputWakelockStr[] = "AudioHardwareQSD";
+
 // ----------------------------------------------------------------------------
 
 AudioHardware::AudioHardware() :
@@ -963,6 +968,8 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
             LOGE("Cannot start pcm playback");
             goto Error;
         }
+        LOGV("acquire wakelock");
+        acquire_wake_lock(PARTIAL_WAKE_LOCK, kOutputWakelockStr);
         mStandby = false;
     }
 
@@ -997,6 +1004,8 @@ status_t AudioHardware::AudioStreamOutMSM72xx::standby()
     if (!mStandby && mFd >= 0) {
         ::close(mFd);
         mFd = -1;
+        LOGV("release wakelock");
+        release_wake_lock(kOutputWakelockStr);
     }
     mStandby = true;
     LOGI("AudioHardware pcm playback is going to standby.");
