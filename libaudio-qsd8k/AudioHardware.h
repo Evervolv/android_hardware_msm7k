@@ -73,6 +73,12 @@ namespace android {
 #define FM_SPKR	                   ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO 
 #define SPKR_PHONE_HEADSET_STEREO  ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO_W_MONO_HEADSET
 
+#define ACDB_ID_EXT_MIC_REC 307
+#define ACDB_ID_HEADSET_PLAYBACK 407
+#define ACDB_ID_HEADSET_RINGTONE_PLAYBACK 408
+#define ACDB_ID_INT_MIC_REC 507
+#define ACDB_ID_SPKR_PLAYBACK 607
+
 #define SAMP_RATE_INDX_8000	0
 #define SAMP_RATE_INDX_11025	1
 #define SAMP_RATE_INDX_12000	2
@@ -91,6 +97,12 @@ namespace android {
 #define EQ_DISABLE   0x0000
 #define RX_IIR_ENABLE   0x0004
 #define RX_IIR_DISABLE  0x0000
+
+struct msm_bt_endpoint {
+    int tx;
+    int rx;
+    char name[64];
+};
 
 struct eq_filter_type {
     int16_t gain;
@@ -199,6 +211,8 @@ private:
     status_t    get_snd_dev();
     status_t    doAudience_A1026_Control(int Mode, bool Record, uint32_t Routes);
     status_t    doRouting(AudioStreamInMSM72xx *input);
+    status_t    updateACDB();
+    status_t    updateBT();
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
     public:
@@ -281,11 +295,13 @@ private:
             bool        mInit;
             bool        mMicMute;
             bool        mBluetoothNrec;
-            uint32_t    mBluetoothId;
+            uint32_t    mBluetoothIdTx;
+            uint32_t    mBluetoothIdRx;
             AudioStreamOutMSM72xx*  mOutput;
             SortedVector <AudioStreamInMSM72xx*>   mInputs;
 
-            int mNumSndEndpoints;
+            msm_bt_endpoint *mBTEndpoints;
+            int mNumBTEndpoints;
             int mCurSndDevice;
 
      friend class AudioStreamInMSM72xx;
