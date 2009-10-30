@@ -540,13 +540,23 @@ void AudioPolicyManager::setPhoneState(int state)
         newDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
     } else if (mPhoneState == AudioSystem::MODE_IN_CALL) {
         newDevice = getDeviceForStrategy(STRATEGY_PHONE);
-        // force routing command to audio hardware when starting call
-        // even if no device change is needed
-        force = true;
     } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)) {
         newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
     } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
         newDevice = getDeviceForStrategy(STRATEGY_DTMF);
+    }
+
+    // are we entering or starting a call
+    if ((oldState != AudioSystem::MODE_IN_CALL) && (state == AudioSystem::MODE_IN_CALL)) {
+        LOGV("  Entering call in setPhoneState()");
+        // force routing command to audio hardware when starting a call
+        // even if no device change is needed
+        force = true;
+    } else if ((oldState == AudioSystem::MODE_IN_CALL) && (state != AudioSystem::MODE_IN_CALL)) {
+        LOGV("  Exiting call in setPhoneState()");
+        // force routing command to audio hardware when exiting a call
+        // even if no device change is needed
+        force = true;
     }
 
     if (mA2dpOutput != 0) {
@@ -628,13 +638,15 @@ void AudioPolicyManager::setPhoneState(int state)
         if (newDevice == 0) {
             newDevice = mOutputs.valueFor(mHardwareOutput)->device();
         }
-        force = true;
     }
     // change routing is necessary
     setOutputDevice(mHardwareOutput, newDevice, force);
     // reset stream volumes that depend on phone state when entering or exiting call
-    // (force is true only in this case)
+    // (force is true only in those two cases).
     if (force) {
+        // VOICE_CALL volume must be reset whenever entering or exiting a call as on QSD8K, the
+        // voice volume also controls the master volume (the implementation of checkAndSetVolume()
+        // for VOICE_CALL is dependent on the phone state)
         checkAndSetVolume(AudioSystem::VOICE_CALL, mStreams[AudioSystem::VOICE_CALL].mIndexCur, mHardwareOutput, 0, 0, true);
         checkAndSetVolume(AudioSystem::DTMF, mStreams[AudioSystem::DTMF].mIndexCur, mHardwareOutput, 0, 0, true);
         if (mA2dpOutput != 0) {
@@ -1524,6 +1536,10 @@ status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_h
                 voiceVolume = (float)index/(float)mStreams[stream].mIndexMax;
                 if (mPhoneState == AudioSystem::MODE_IN_CALL) {
                     volume = 1.0;
+                } else {
+                    // when not in call, apply no attenuation on the voice volume because it affects
+                    // all other streams on QSD8K.
+                    voiceVolume = 1.0;
                 }
             } else if (stream == AudioSystem::DTMF &&
                        mPhoneState == AudioSystem::MODE_IN_CALL &&
