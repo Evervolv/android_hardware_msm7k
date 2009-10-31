@@ -303,6 +303,7 @@ private:
             msm_bt_endpoint *mBTEndpoints;
             int mNumBTEndpoints;
             int mCurSndDevice;
+            int mNoiseSuppressionState;
 
      friend class AudioStreamInMSM72xx;
             Mutex       mLock;
