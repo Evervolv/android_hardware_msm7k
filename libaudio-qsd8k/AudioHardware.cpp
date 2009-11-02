@@ -40,19 +40,6 @@ extern "C" {
 #include "a1026.h"
 }
 
-enum audio_routes {
-    ROUTE_EARPIECE       = (1 << 0),
-    ROUTE_SPEAKER        = (1 << 1),
-    ROUTE_BLUETOOTH_SCO  = (1 << 2),
-    ROUTE_HEADSET        = (1 << 3),
-    ROUTE_BLUETOOTH_A2DP = (1 << 4),
-    ROUTE_NO_MIC_HEADSET = (1 << 5),
-    ROUTE_TTY            = (1 << 6),
-    ROUTE_FM_HEADSET     = (1 << 7),
-    ROUTE_FM_SPEAKER     = (1 << 8),
-    ROUTE_ALL            = -1UL,
-};
-
 #define LOG_SND_RPC 0  // Set to 1 to log sound RPC's
 #define TX_PATH (1)
 
@@ -73,11 +60,12 @@ static int support_a1026 = 1;
 static int fd_a1026 = -1;
 static int old_pathid = -1;
 static int new_pathid = -1;
-static int cur_rx_device = 0;
-static int cur_tx_device = 0;
+static int curr_out_device = -1;
+static int curr_mic_device = -1;
 static int voice_started = 0;
 static int fd_fm_device = -1;
 int errCount = 0;
+static void * acoustic;
 const uint32_t AudioHardware::inputSamplingRates[] = {
         8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000
 };
@@ -88,11 +76,59 @@ static const char kOutputWakelockStr[] = "AudioHardwareQSD";
 // ----------------------------------------------------------------------------
 
 AudioHardware::AudioHardware() :
-    mInit(false), mMicMute(true), mBluetoothNrec(true), mBluetoothId(0),
-    mA1026Init(false),
-    mOutput(0)
+    mA1026Init(false), mInit(false), mMicMute(true),
+    mBluetoothNrec(true), mBluetoothIdTx(0),
+    mBluetoothIdRx(0), mOutput(0)
 {
+    int (*snd_get_num)();
+    int (*snd_get_bt_endpoint)(msm_bt_endpoint *);
+    int (*set_acoustic_parameters)();
+
+    struct msm_bt_endpoint *ept;
+
     doA1026_init();
+
+    acoustic =:: dlopen("/system/lib/libhtc_acoustic.so", RTLD_NOW);
+    if (acoustic == NULL ) {
+        LOGE("Could not open libhtc_acoustic.so");
+        /* this is not really an error on non-htc devices... */
+        mNumBTEndpoints = 0;
+        mInit = true;
+        return;
+    }
+    set_acoustic_parameters = (int (*)(void))::dlsym(acoustic, "set_acoustic_parameters");
+    if ((*set_acoustic_parameters) == 0 ) {
+        LOGE("Could not open set_acoustic_parameters()");
+        return;
+    }
+
+    int rc = set_acoustic_parameters();
+    if (rc < 0) {
+        LOGE("Could not set acoustic parameters to share memory: %d", rc);
+    }
+
+    snd_get_num = (int (*)(void))::dlsym(acoustic, "snd_get_num");
+    if ((*snd_get_num) == 0 ) {
+        LOGE("Could not open snd_get_num()");
+    }
+
+    mNumBTEndpoints = snd_get_num();
+    LOGD("mNumBTEndpoints = %d", mNumBTEndpoints);
+    mBTEndpoints = new msm_bt_endpoint[mNumBTEndpoints];
+    mInit = true;
+    LOGV("constructed %d SND endpoints)", mNumBTEndpoints);
+    ept = mBTEndpoints;
+    snd_get_bt_endpoint = (int (*)(msm_bt_endpoint *))::dlsym(acoustic, "snd_get_bt_endpoint");
+    if ((*snd_get_bt_endpoint) == 0 ) {
+        LOGE("Could not open snd_get_bt_endpoint()");
+        return;
+    }
+    snd_get_bt_endpoint(mBTEndpoints);
+
+    for (int i = 0; i < mNumBTEndpoints; i++) {
+        LOGE("BT name %s (tx,rx)=(%d,%d)", mBTEndpoints[i].name, mBTEndpoints[i].tx, mBTEndpoints[i].rx);
+    }
+
     mInit = true;
 }
 
@@ -279,21 +315,21 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
     }
     key = String8(BT_NAME_KEY);
     if (param.get(key, value) == NO_ERROR) {
-        mBluetoothId = 0;
-#if 0
-        for (int i = 0; i < mNumSndEndpoints; i++) {
-            if (!strcasecmp(value.string(), mSndEndpoints[i].name)) {
-                mBluetoothId = mSndEndpoints[i].id;
+        mBluetoothIdTx = 0;
+        mBluetoothIdRx = 0;
+        for (int i = 0; i < mNumBTEndpoints; i++) {
+            if (!strcasecmp(value.string(), mBTEndpoints[i].name)) {
+                mBluetoothIdTx = mBTEndpoints[i].tx;
+                mBluetoothIdRx = mBTEndpoints[i].rx;
                 LOGI("Using custom acoustic parameters for %s", value.string());
                 break;
             }
         }
-#endif
-        if (mBluetoothId == 0) {
+        if (mBluetoothIdTx == 0) {
             LOGI("Using default acoustic parameters "
                  "(%s not in acoustic database)", value.string());
-            doRouting(NULL);
         }
+        doRouting(NULL);
     }
     return NO_ERROR;
 }
@@ -462,6 +498,8 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall)
        close(fd);
        return -1;
     }
+    curr_out_device = out_device;
+    curr_mic_device = mic_device;
 
 Incall:
     if (inCall == true && !voice_started) {
@@ -511,9 +549,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
         doAudience_A1026_Control(mMode, mRecordState, device);
 
     if (device == (uint32_t)SND_DEVICE_BT || device == (uint32_t)SND_DEVICE_CARKIT) {
-        if (mBluetoothId) {
-            device = mBluetoothId;
-        } else if (!mBluetoothNrec) {
+        if (!mBluetoothNrec) {
             device = SND_DEVICE_BT_EC_OFF;
         }
     }
@@ -596,9 +632,131 @@ status_t AudioHardware::get_snd_dev(void)
     return mCurSndDevice;
 }
 
+status_t AudioHardware::updateBT(void)
+{
+    int fd = 0;
+    uint32_t id[2];
+
+    fd = open("/dev/msm_audio_ctl", O_RDWR);
+    if (fd < 0)        {
+       LOGE("Cannot open msm_audio_ctl");
+       return -1;
+    }
+    int rc = 0;
+    if (mBluetoothIdRx != -1) {
+        id[0] = mBluetoothIdRx;
+        id[1] = curr_out_device;
+        LOGE("(mBluetoothIdRx, curr_out_device) = (%d, %d)", mBluetoothIdRx, curr_out_device);
+        rc = ioctl(fd, AUDIO_UPDATE_ACDB, &id);
+        if (rc) {
+           LOGE("Cannot update RX ACDB %d, rc=%d", mBluetoothIdRx, rc);
+           close(fd);
+           return -1;
+        } else
+           LOGD("update TX ACDB %d success", mBluetoothIdRx);
+    }
+
+    if (mBluetoothIdTx != -1) {
+        id[0] = mBluetoothIdTx;
+        id[1] = curr_mic_device;
+        LOGE("(mBluetoothIdTx, curr_out_device) = (%d, %d)", mBluetoothIdTx, curr_out_device);
+        rc = ioctl(fd, AUDIO_UPDATE_ACDB, &id);
+        if (rc) {
+           LOGE("Cannot update TX ACDB %d, rc = %d", mBluetoothIdTx, rc);
+           close(fd);
+           return -1;
+        } else
+           LOGD("update TX ACDB %d success", mBluetoothIdTx);
+    }
+    close(fd);
+    return 0;
+}
+
+// always call with mutex held
+status_t AudioHardware::updateACDB(void)
+{
+    int fd = 0;
+    int acdb_id = -1;
+    uint32_t id[2];
+
+    fd = open("/dev/msm_audio_ctl", O_RDWR);
+    if (fd < 0)        {
+       LOGE("Cannot open msm_audio_ctl");
+       return -1;
+    }
+
+    if (mMode == AudioSystem::MODE_IN_CALL) {
+        LOGD("skip update ACDB due to in-call");
+        close(fd);
+        return 0;
+    }
+
+    //update RX acdb parameters.
+    if (!checkOutputStandby()) {
+        switch (mCurSndDevice) {
+            case SND_DEVICE_HEADSET:
+            case SND_DEVICE_NO_MIC_HEADSET:
+            case SND_DEVICE_FM_HEADSET:
+                acdb_id = ACDB_ID_HEADSET_PLAYBACK;
+                break;
+            case SND_DEVICE_SPEAKER:
+            case SND_DEVICE_FM_SPEAKER:
+                acdb_id = ACDB_ID_SPKR_PLAYBACK;
+                break;
+            case SND_DEVICE_HEADSET_AND_SPEAKER:
+                acdb_id = ACDB_ID_HEADSET_RINGTONE_PLAYBACK;
+                break;
+            default:
+                break;
+        }
+    }
+    if (acdb_id != -1) {
+        id[0] = acdb_id;
+        id[1] = curr_out_device;
+        if (ioctl(fd, AUDIO_UPDATE_ACDB, &id)) {
+           LOGE("Cannot update RX ACDB %d", acdb_id);
+           close(fd);
+           return -1;
+        } else
+           LOGD("update RX ACDB %d success", acdb_id);
+    }
+
+    //update TX acdb parameters.
+    acdb_id = -1;
+    if (mRecordState) {
+        switch (mCurSndDevice) {
+            case SND_DEVICE_HEADSET:
+            case SND_DEVICE_FM_HEADSET:
+            case SND_DEVICE_FM_SPEAKER:
+                acdb_id = ACDB_ID_EXT_MIC_REC;
+                break;
+            case SND_DEVICE_HANDSET:
+            case SND_DEVICE_NO_MIC_HEADSET:
+            case SND_DEVICE_SPEAKER:
+                acdb_id = ACDB_ID_INT_MIC_REC;
+                break;
+            default:
+                break;
+        }
+    }
+    if (acdb_id != -1) {
+        id[0] = acdb_id;
+        id[1] = curr_mic_device;
+        if (ioctl(fd, AUDIO_UPDATE_ACDB, &id)) {
+           LOGE("Cannot update TX ACDB %d", acdb_id);
+           close(fd);
+           return -1;
+        } else
+           LOGD("update TX ACDB %d success", acdb_id);
+    }
+    close(fd);
+    return 0;
+}
+
 status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t Routes)
 {
     int rc = 0;
+    int retry = 4;
 
     if (!mA1026Init) {
 	LOGW("Audience A1026 not initialized.\n");
@@ -696,14 +854,28 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 
     if (old_pathid != new_pathid) {
         //LOGI("A1026: do ioctl(A1026_SET_CONFIG) to %d\n", new_pathid);
+        do {
+            rc = ioctl(fd_a1026, A1026_SET_CONFIG, &new_pathid);
+            if (!rc) {
+                old_pathid = new_pathid;
+                break;
+            }
+        } while (--retry);
+
+        if (rc < 0) {
+            LOGE("A1026 do hard reset to recover from error!\n");
+            rc = doA1026_init(); /* A1026 needs to do hard reset! */
+            if (!rc) {
 	rc = ioctl(fd_a1026, A1026_SET_CONFIG, &new_pathid);
 	if (!rc)
 		old_pathid = new_pathid;
 	else
-	    goto Error;
+                    LOGE("A1026 Fatal Error!\n");
+            } else
+                LOGE("A1026 Fatal Error: Re-init A1026 Failed\n");
+        }
     }
 
-Error:
     mA1026Lock.unlock();
     close(fd_a1026);
     fd_a1026 = -1;
@@ -812,6 +984,10 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
     if (sndDevice != -1 && sndDevice != mCurSndDevice) {
         ret = doAudioRouteOrMute(sndDevice);
         mCurSndDevice = sndDevice;
+        if (mMode == AudioSystem::MODE_IN_CALL &&  mBluetoothIdTx != 0
+                && sndDevice == SND_DEVICE_BT) {
+            ret = updateBT();
+        } else if (!ret) ret = updateACDB();
     }
 
     return ret;
@@ -839,7 +1015,9 @@ status_t AudioHardware::dumpInternals(int fd, const Vector<String16>& args)
     result.append(buffer);
     snprintf(buffer, SIZE, "\tmBluetoothNrec: %s\n", mBluetoothNrec? "true": "false");
     result.append(buffer);
-    snprintf(buffer, SIZE, "\tmBluetoothId: %d\n", mBluetoothId);
+    snprintf(buffer, SIZE, "\tmBluetoothIdtx: %d\n", mBluetoothIdTx);
+    result.append(buffer);
+    snprintf(buffer, SIZE, "\tmBluetoothIdrx: %d\n", mBluetoothIdRx);
     result.append(buffer);
     ::write(fd, result.string(), result.size());
     return NO_ERROR;
@@ -971,6 +1149,8 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         LOGV("acquire wakelock");
         acquire_wake_lock(PARTIAL_WAKE_LOCK, kOutputWakelockStr);
         mStandby = false;
+        Mutex::Autolock lock(mHardware->mLock);
+        mHardware->updateACDB();
     }
 
     while (count) {
@@ -1212,20 +1392,19 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
         }
     }
 
-    if (support_a1026 == 1) {
-        if (mHardware) {
+    if (mState < AUDIO_INPUT_STARTED) {
         mHardware->set_mRecordState(1);
+    if (support_a1026 == 1) {
         mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 1, mHardware->get_snd_dev());
         }
-    }
-
-    if (mState < AUDIO_INPUT_STARTED) {
         if (ioctl(mFd, AUDIO_START, 0)) {
             LOGE("Error starting record");
             return -1;
         }
         LOGI("AUDIO_START: start kernel pcm_in driver.");
         mState = AUDIO_INPUT_STARTED;
+        Mutex::Autolock lock(mHardware->mLock);
+        mHardware->updateACDB();
     }
 
     while (count) {
@@ -1244,9 +1423,9 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 
 status_t AudioHardware::AudioStreamInMSM72xx::standby()
 {
-    if (support_a1026 == 1) {
         if (mHardware) {
         mHardware->set_mRecordState(0);
+        if (support_a1026 == 1) {
         mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 0, mHardware->get_snd_dev());
         }
     }
