@@ -999,6 +999,9 @@ audio_io_handle_t AudioPolicyManager::getInput(int inputSource,
             device = AudioSystem::DEVICE_IN_BUILTIN_MIC;
         }
         break;
+    case AUDIO_SOURCE_CAMCORDER:
+        device = AudioSystem::DEVICE_IN_BACK_MIC;
+        break;
     case AUDIO_SOURCE_VOICE_UPLINK:
         device = AudioSystem::DEVICE_IN_VOICE_CALL;
         channels = AudioSystem::CHANNEL_IN_VOICE_UPLINK;

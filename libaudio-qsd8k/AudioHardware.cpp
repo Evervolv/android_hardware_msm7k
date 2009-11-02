@@ -55,6 +55,9 @@ static const uint32_t SND_DEVICE_FM_HEADSET = 9;
 static const uint32_t SND_DEVICE_FM_SPEAKER = 11;
 static const uint32_t SND_DEVICE_NO_MIC_HEADSET = 8;
 static const uint32_t SND_DEVICE_TTY_FULL = 5;
+static const uint32_t SND_DEVICE_HANDSET_BACK_MIC = 20;
+static const uint32_t SND_DEVICE_SPEAKER_BACK_MIC = 21;
+static const uint32_t SND_DEVICE_NO_MIC_HEADSET_BACK_MIC = 28;
 namespace android {
 static int support_a1026 = 1;
 static int fd_a1026 = -1;
@@ -78,7 +81,8 @@ static const char kOutputWakelockStr[] = "AudioHardwareQSD";
 AudioHardware::AudioHardware() :
     mA1026Init(false), mInit(false), mMicMute(true),
     mBluetoothNrec(true), mBluetoothIdTx(0),
-    mBluetoothIdRx(0), mOutput(0)
+    mBluetoothIdRx(0), mOutput(0),
+    mNoiseSuppressionState(A1026_NS_STATE_AUTO)
 {
     int (*snd_get_num)();
     int (*snd_get_bt_endpoint)(msm_bt_endpoint *);
@@ -331,13 +335,82 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
         }
         doRouting(NULL);
     }
+    key = String8("noise_suppression");
+    if (param.get(key, value) == NO_ERROR) {
+        if (support_a1026 == 1) {
+            int noiseSuppressionState;
+            if (value == "off") {
+                noiseSuppressionState = A1026_NS_STATE_OFF;
+            } else if (value == "auto") {
+                noiseSuppressionState = A1026_NS_STATE_AUTO;
+            } else if (value == "far_talk") {
+                noiseSuppressionState = A1026_NS_STATE_FT;
+            } else if (value == "close_talk") {
+                noiseSuppressionState = A1026_NS_STATE_CT;
+            } else {
+                return BAD_VALUE;
+            }
+
+            if (noiseSuppressionState != mNoiseSuppressionState) {
+                if (!mA1026Init) {
+                    LOGW("Audience A1026 not initialized.\n");
+                    return INVALID_OPERATION;
+                }
+
+                if (fd_a1026 < 0) {
+                    fd_a1026 = open("/dev/audience_a1026", O_RDWR);
+                    if (fd_a1026 < 0) {
+                        LOGE("Cannot open audience_a1026 device (%d)\n", fd_a1026);
+                        return -1;
+                    }
+                }
+                LOGV("Setting noise suppression %s", value.string());
+                mA1026Lock.lock();
+                int rc = ioctl(fd_a1026, A1026_SET_NS_STATE, &noiseSuppressionState);
+                if (!rc) {
+                    mNoiseSuppressionState = noiseSuppressionState;
+                } else {
+                    LOGE("Failed to set noise suppression %s", value.string());
+                }
+                mA1026Lock.unlock();
+            }
+        } else {
+            return INVALID_OPERATION;
+        }
+     }
+
     return NO_ERROR;
 }
 
 String8 AudioHardware::getParameters(const String8& keys)
 {
-    AudioParameter param = AudioParameter(keys);
-    return param.toString();
+    AudioParameter request = AudioParameter(keys);
+    AudioParameter reply = AudioParameter();
+    String8 value;
+    String8 key;
+
+    LOGV("getParameters() %s", keys.string());
+
+    key = "noise_suppression";
+    if (request.get(key, value) == NO_ERROR) {
+        switch(mNoiseSuppressionState) {
+        case A1026_NS_STATE_OFF:
+            value = "off";
+            break;
+        case A1026_NS_STATE_AUTO:
+            value = "auto";
+            break;
+        case A1026_NS_STATE_FT:
+            value = "far_talk";
+            break;
+        case A1026_NS_STATE_CT:
+            value = "close_talk";
+            break;
+        }
+        reply.add(key, value);
+    }
+
+    return reply.toString();
 }
 
 
@@ -435,7 +508,8 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall)
            out_device = BT_SCO_SPKR;
            mic_device = BT_SCO_MIC;
            LOGD("BT Headset");
-    } else if (device == SND_DEVICE_SPEAKER) {
+    } else if (device == SND_DEVICE_SPEAKER ||
+               device == SND_DEVICE_SPEAKER_BACK_MIC) {
            out_device = SPKR_PHONE_MONO;
            mic_device = SPKR_PHONE_MIC;
            LOGD("Speakerphone");
@@ -451,6 +525,14 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall)
            out_device = HEADSET_SPKR_STEREO;
            mic_device = HANDSET_MIC;
            LOGD("No microphone Wired Headset");
+    } else if (device == SND_DEVICE_NO_MIC_HEADSET_BACK_MIC) {
+           out_device = HEADSET_SPKR_STEREO;
+           mic_device = SPKR_PHONE_MIC;
+           LOGD("No microphone Wired Headset and back mic");
+    } else if (device == SND_DEVICE_HANDSET_BACK_MIC) {
+           out_device = HANDSET_SPKR;
+           mic_device = SPKR_PHONE_MIC;
+           LOGD("Handset and back mic");
     } else if (device == SND_DEVICE_FM_HEADSET) {
            out_device = FM_HEADSET;
            mic_device = HEADSET_MIC;
@@ -487,7 +569,6 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall)
        LOGE("Cannot open msm_audio_ctl");
        return -1;
     }
-
     if (ioctl(fd, AUDIO_SWITCH_DEVICE, &out_device)) {
        LOGE("Cannot switch audio device");
        close(fd);
@@ -696,11 +777,13 @@ status_t AudioHardware::updateACDB(void)
         switch (mCurSndDevice) {
             case SND_DEVICE_HEADSET:
             case SND_DEVICE_NO_MIC_HEADSET:
+            case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
             case SND_DEVICE_FM_HEADSET:
                 acdb_id = ACDB_ID_HEADSET_PLAYBACK;
                 break;
             case SND_DEVICE_SPEAKER:
             case SND_DEVICE_FM_SPEAKER:
+            case SND_DEVICE_SPEAKER_BACK_MIC:
                 acdb_id = ACDB_ID_SPKR_PLAYBACK;
                 break;
             case SND_DEVICE_HEADSET_AND_SPEAKER:
@@ -733,6 +816,9 @@ status_t AudioHardware::updateACDB(void)
             case SND_DEVICE_HANDSET:
             case SND_DEVICE_NO_MIC_HEADSET:
             case SND_DEVICE_SPEAKER:
+            case SND_DEVICE_SPEAKER_BACK_MIC:
+            case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
+            case SND_DEVICE_HANDSET_BACK_MIC:
                 acdb_id = ACDB_ID_INT_MIC_REC;
                 break;
             default:
@@ -784,6 +870,9 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	    switch (Routes) {
 	        case SND_DEVICE_HANDSET:
 	        case SND_DEVICE_NO_MIC_HEADSET:
+	            //TODO: what do we do for camcorder when in call?
+	        case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
+	        case SND_DEVICE_HANDSET_BACK_MIC:
                     new_pathid = A1026_PATH_INCALL_VR_RECEIVER;
                     break;
                 case SND_DEVICE_HEADSET:
@@ -793,6 +882,8 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	            new_pathid = A1026_PATH_INCALL_VR_HEADSET;
 	            break;
 	        case SND_DEVICE_SPEAKER:
+	            //TODO: what do we do for camcorder when in call?
+	        case SND_DEVICE_SPEAKER_BACK_MIC:
 	            new_pathid = A1026_PATH_INCALL_VR_SPEAKER;
 	            break;
 	        case SND_DEVICE_BT:
@@ -838,7 +929,12 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        new_pathid = A1026_PATH_RECORD_HEADSET; /* EXT-MIC Recording: NS disable, Headset MIC */
 	        break;
 	    case SND_DEVICE_SPEAKER:
-	        new_pathid = A1026_PATH_RECORD_SPEAKER; /* CAM-Coder: NS FT mode, Main MIC */
+	        new_pathid = A1026_PATH_RECORD_SPEAKER; /* INT-MIC: NS FT mode, Main MIC */
+	        break;
+	    case SND_DEVICE_SPEAKER_BACK_MIC:
+	    case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
+	    case SND_DEVICE_HANDSET_BACK_MIC:
+	        new_pathid = A1026_PATH_CAMCORDER; /* CAM-Coder: NS FT mode, Back MIC */
 	        break;
 	    case SND_DEVICE_BT:
 	    case SND_DEVICE_BT_EC_OFF:
@@ -889,7 +985,6 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
     Mutex::Autolock lock(mLock);
     uint32_t outputDevices = mOutput->devices();
     status_t ret = NO_ERROR;
-    int audProcess = (ADRC_DISABLE | EQ_DISABLE | RX_IIR_DISABLE);
     int sndDevice = -1;
 
     if (input != NULL) {
@@ -904,16 +999,28 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
                     (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
                     LOGI("Routing audio to Wired Headset and Speaker\n");
                     sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-                    audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
                 } else {
                     LOGI("Routing audio to Wired Headset\n");
                     sndDevice = SND_DEVICE_HEADSET;
+                }
+            } else if (inputDevice & AudioSystem::DEVICE_IN_BACK_MIC) {
+                if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
+                    LOGI("Routing audio to Speakerphone with back mic\n");
+                    sndDevice = SND_DEVICE_SPEAKER_BACK_MIC;
+                } else if (outputDevices == AudioSystem::DEVICE_OUT_EARPIECE) {
+                    LOGI("Routing audio to Handset with back mic\n");
+                    sndDevice = SND_DEVICE_HANDSET_BACK_MIC;
+                } else {
+                    LOGI("Routing audio to Headset with back mic\n");
+                    sndDevice = SND_DEVICE_NO_MIC_HEADSET_BACK_MIC;
                 }
             } else {
                 if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
                     LOGI("Routing audio to Speakerphone\n");
                     sndDevice = SND_DEVICE_SPEAKER;
-                    audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
+                } else if (outputDevices == AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
+                    LOGI("Routing audio to Speakerphone\n");
+                    sndDevice = SND_DEVICE_NO_MIC_HEADSET;
                 } else {
                     LOGI("Routing audio to Handset\n");
                     sndDevice = SND_DEVICE_HANDSET;
@@ -945,16 +1052,13 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
                    (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
             LOGI("Routing audio to Wired Headset and Speaker\n");
             sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-            audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
         } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_SPEAKER) {
             LOGI("Routing audio to FM Speakerphone (%d,%x)\n", mMode, outputDevices);
             sndDevice = SND_DEVICE_FM_SPEAKER;
-            audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_DISABLE);
         } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_HEADPHONE) {
             if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
                 LOGI("Routing audio to FM Headset and Speaker (%d,%x)\n", mMode, outputDevices);
                 sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-                audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
             } else {
                 LOGI("Routing audio to FM Headset (%d,%x)\n", mMode, outputDevices);
                 sndDevice = SND_DEVICE_FM_HEADSET;
@@ -963,7 +1067,6 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
             if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
                 LOGI("Routing audio to No microphone Wired Headset and Speaker (%d,%x)\n", mMode, outputDevices);
                 sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-                audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
             } else {
                 LOGI("Routing audio to No microphone Wired Headset (%d,%x)\n", mMode, outputDevices);
                 sndDevice = SND_DEVICE_NO_MIC_HEADSET;
@@ -974,7 +1077,6 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
         } else if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
             LOGI("Routing audio to Speakerphone\n");
             sndDevice = SND_DEVICE_SPEAKER;
-            audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
         } else {
             LOGI("Routing audio to Handset\n");
             sndDevice = SND_DEVICE_HANDSET;
