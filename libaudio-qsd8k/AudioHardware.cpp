@@ -67,6 +67,8 @@ static int curr_out_device = -1;
 static int curr_mic_device = -1;
 static int voice_started = 0;
 static int fd_fm_device = -1;
+static int stream_volume = -300;
+
 int errCount = 0;
 static void * acoustic;
 const uint32_t AudioHardware::inputSamplingRates[] = {
@@ -1248,6 +1250,13 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
             LOGE("Cannot start pcm playback");
             goto Error;
         }
+
+        status = ioctl(mFd, AUDIO_SET_VOLUME, &stream_volume);
+        if (status < 0) {
+            LOGE("Cannot start pcm playback");
+            goto Error;
+        }
+
         LOGV("acquire wakelock");
         acquire_wake_lock(PARTIAL_WAKE_LOCK, kOutputWakelockStr);
         mStandby = false;
