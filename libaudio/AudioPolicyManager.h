@@ -77,6 +77,8 @@ public:
         virtual status_t setStreamVolumeIndex(AudioSystem::stream_type stream, int index);
         virtual status_t getStreamVolumeIndex(AudioSystem::stream_type stream, int *index);
 
+        virtual status_t dump(int fd);
+
 private:
 
         enum routing_strategy {
@@ -94,6 +96,7 @@ private:
         public:
             AudioOutputDescriptor();
 
+            status_t    dump(int fd);
 
             uint32_t device();
             void changeRefCount(AudioSystem::stream_type, int delta);
@@ -120,6 +123,8 @@ private:
         public:
             AudioInputDescriptor();
 
+            status_t    dump(int fd);
+
             uint32_t mSamplingRate;                     //
             uint32_t mFormat;                           // input configuration
             uint32_t mChannels;                         //
@@ -134,6 +139,8 @@ private:
         public:
             StreamDescriptor()
             :   mIndexMin(0), mIndexMax(1), mIndexCur(1), mMuteCount(0), mCanBeMuted(true) {}
+
+            void dump(char* buffer, size_t size);
 
             int mIndexMin;      // min volume index
             int mIndexMax;      // max volume index
@@ -172,7 +179,7 @@ private:
         audio_io_handle_t mA2dpOutput;                  // A2DP output handler
         audio_io_handle_t mDuplicatedOutput;            // duplicated output handler: outputs to hardware and A2DP.
 
-        KeyedVector<audio_io_handle_t, AudioOutputDescriptor *> mOutputs;   // list ot output descritors
+        KeyedVector<audio_io_handle_t, AudioOutputDescriptor *> mOutputs;   // list of output descriptors
         KeyedVector<audio_io_handle_t, AudioInputDescriptor *> mInputs;     // list of input descriptors
         uint32_t mAvailableOutputDevices;                                   // bit field of all available output devices
         uint32_t mAvailableInputDevices;                                    // bit field of all available input devices
