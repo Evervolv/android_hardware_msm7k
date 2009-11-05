@@ -126,6 +126,7 @@ private:
 
             status_t    dump(int fd);
 
+            int      mInputSource;                      //
             uint32_t mSamplingRate;                     //
             uint32_t mFormat;                           // input configuration
             uint32_t mChannels;                         //
