@@ -135,6 +135,14 @@ AudioHardware::AudioHardware() :
         LOGE("BT name %s (tx,rx)=(%d,%d)", mBTEndpoints[i].name, mBTEndpoints[i].tx, mBTEndpoints[i].rx);
     }
 
+
+    // reset voice mode in case media_server crashed and restarted while in call
+    int fd = open("/dev/msm_audio_ctl", O_RDWR);
+    if (fd >= 0) {
+        ioctl(fd, AUDIO_STOP_VOICE, NULL);
+        close(fd);
+    }
+
     mInit = true;
 }
 
