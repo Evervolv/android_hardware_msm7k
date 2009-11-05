@@ -30,6 +30,8 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 
+#include <cutils/properties.h> // for property_get for the voice recognition mode switch
+
 // hardware specific functions
 
 #include "AudioHardware.h"
@@ -68,6 +70,11 @@ static int curr_mic_device = -1;
 static int voice_started = 0;
 static int fd_fm_device = -1;
 static int stream_volume = -300;
+// use VR mode on inputs: 1 == VR mode enabled when selected, 0 = VR mode disabled when selected
+static int vr_mode = A1026_VR_MODE_DISABLED;
+static bool vr_mode_change = false;
+static int vr_uses_ns = 0;
+static int enable1026 = 1;
 
 int errCount = 0;
 static void * acoustic;
@@ -135,13 +142,25 @@ AudioHardware::AudioHardware() :
         LOGE("BT name %s (tx,rx)=(%d,%d)", mBTEndpoints[i].name, mBTEndpoints[i].tx, mBTEndpoints[i].rx);
     }
 
-
     // reset voice mode in case media_server crashed and restarted while in call
     int fd = open("/dev/msm_audio_ctl", O_RDWR);
     if (fd >= 0) {
         ioctl(fd, AUDIO_STOP_VOICE, NULL);
         close(fd);
     }
+
+    vr_mode_change = false;
+    vr_mode = A1026_VR_MODE_DISABLED;
+    enable1026 = 1;
+    char value[PROPERTY_VALUE_MAX];
+    // Check the system property to enable or not the special recording modes
+    property_get("media.a1026.enableA1026", value, "1");
+    enable1026 = atoi(value);
+    LOGV("Enable mode selection for A1026 is %d", enable1026);
+    // Check the system property for which VR mode to use
+    property_get("media.a1026.nsForVoiceRec", value, "0");
+    vr_uses_ns = atoi(value);
+    LOGV("Using Noise Suppression for Voice Rec is %d", vr_uses_ns);
 
     mInit = true;
 }
@@ -245,6 +264,11 @@ void AudioHardware::closeInputStream(AudioStreamIn* in) {
 
 status_t AudioHardware::setMode(int mode)
 {
+    // VR mode is never used in a call and must be cleared when entering the IN_CALL mode
+    if (mode == AudioSystem::MODE_IN_CALL) {
+        vr_mode = A1026_VR_MODE_DISABLED;
+    }
+
     status_t status = AudioHardwareBase::setMode(mode);
     if (status == NO_ERROR) {
         // make sure that doAudioRouteOrMute() is called by doRouting()
@@ -928,29 +952,73 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
        }
     } else if (Record == 1) {
         switch (Routes) {
-            case SND_DEVICE_HANDSET:
-	    case SND_DEVICE_NO_MIC_HEADSET:
+        case SND_DEVICE_HANDSET:
+        case SND_DEVICE_NO_MIC_HEADSET:
+	        if (vr_mode == A1026_VR_MODE_ENABLED) {
+	            if (vr_uses_ns) {
+	                new_pathid = A1026_PATH_INCALL_VR_RECEIVER; // A1026_PATH_VR_NS_RECEIVER
+	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_RECEIVER");
+	            } else {
+	                new_pathid = A1026_PATH_INCALL_VR_RECEIVER; // A1026_PATH_VR_NO_NS_RECEIVER
+	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_RECEIVER");
+	            }
+	        } else {
                 new_pathid = A1026_PATH_RECORD_RECEIVER; /* INT-MIC Recording: NS disable, Main MIC */
-                break;
-            case SND_DEVICE_HEADSET:
-            case SND_DEVICE_HEADSET_AND_SPEAKER:
-            case SND_DEVICE_FM_HEADSET:
-            case SND_DEVICE_FM_SPEAKER:
-	        new_pathid = A1026_PATH_RECORD_HEADSET; /* EXT-MIC Recording: NS disable, Headset MIC */
+                LOGV("A1026 control: new path is A1026_PATH_RECORD_RECEIVER");
+	        }
 	        break;
-	    case SND_DEVICE_SPEAKER:
-	        new_pathid = A1026_PATH_RECORD_SPEAKER; /* INT-MIC: NS FT mode, Main MIC */
+        case SND_DEVICE_HEADSET:
+        case SND_DEVICE_HEADSET_AND_SPEAKER:
+        case SND_DEVICE_FM_HEADSET:
+        case SND_DEVICE_FM_SPEAKER:
+	        if (vr_mode == A1026_VR_MODE_ENABLED) {
+	            if (vr_uses_ns) {
+	                new_pathid = A1026_PATH_INCALL_VR_HEADSET; // A1026_PATH_VR_NS_HEADSET
+	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_HEADSET");
+	            } else {
+	                new_pathid = A1026_PATH_INCALL_VR_HEADSET; // A1026_PATH_VR_NO_NS_HEADSET
+	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_HEADSET");
+	            }
+	        } else {
+	            new_pathid = A1026_PATH_RECORD_HEADSET; /* EXT-MIC Recording: NS disable, Headset MIC */
+	            LOGV("A1026 control: new path is A1026_PATH_RECORD_HEADSET");
+	        }
 	        break;
-	    case SND_DEVICE_SPEAKER_BACK_MIC:
-	    case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
-	    case SND_DEVICE_HANDSET_BACK_MIC:
+        case SND_DEVICE_SPEAKER:
+	        if (vr_mode == A1026_VR_MODE_ENABLED) {
+	            if (vr_uses_ns) {
+	                new_pathid = A1026_PATH_INCALL_VR_SPEAKER; // A1026_PATH_VR_NS_SPEAKER
+	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_SPEAKER");
+	            } else {
+	                new_pathid = A1026_PATH_INCALL_VR_SPEAKER; // A1026_PATH_VR_NO_NS_SPEAKER
+	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_SPEAKER");
+	            }
+	        } else {
+	            new_pathid = A1026_PATH_RECORD_SPEAKER; /* INT-MIC: NS FT mode, Main MIC */
+	            LOGV("A1026 control: new path is A1026_PATH_RECORD_SPEAKER");
+	        }
+	        break;
+        case SND_DEVICE_SPEAKER_BACK_MIC:
+        case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
+        case SND_DEVICE_HANDSET_BACK_MIC:
 	        new_pathid = A1026_PATH_CAMCORDER; /* CAM-Coder: NS FT mode, Back MIC */
 	        break;
-	    case SND_DEVICE_BT:
-	    case SND_DEVICE_BT_EC_OFF:
-	        new_pathid = A1026_PATH_RECORD_BT; /* BT MIC */
+        case SND_DEVICE_BT:
+        case SND_DEVICE_BT_EC_OFF:
+	        if (vr_mode == A1026_VR_MODE_ENABLED) {
+	            if (vr_uses_ns) {
+	                new_pathid = A1026_PATH_INCALL_VR_BT; // A1026_PATH_VR_NS_BT
+	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_BT");
+	            } else {
+	                new_pathid = A1026_PATH_INCALL_VR_BT; // A1026_PATH_VR_NO_NS_BT
+	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_BT");
+	            }
+	        } else {
+	            new_pathid = A1026_PATH_RECORD_BT; /* BT MIC */
+	            LOGV("A1026 control: new path is A1026_PATH_RECORD_BT");
+	        }
 	        break;
-	    default:
+        default:
 	        break;
         }
     }
@@ -1093,7 +1161,7 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
         }
     }
 
-    if (sndDevice != -1 && sndDevice != mCurSndDevice) {
+    if ((vr_mode_change) || (sndDevice != -1 && sndDevice != mCurSndDevice)) {
         ret = doAudioRouteOrMute(sndDevice);
         mCurSndDevice = sndDevice;
         if (mMode == AudioSystem::MODE_IN_CALL &&  mBluetoothIdTx != 0
@@ -1594,8 +1662,24 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
     String8 key = String8(AudioParameter::keyRouting);
     status_t status = NO_ERROR;
     int device;
+    String8 keyVR = String8(KEY_A1026_VR_MODE);
+    int enabled;
     LOGV("AudioStreamInMSM72xx::setParameters() %s", keyValuePairs.string());
 
+    // reading voice recognition mode parameter
+    if (param.getInt(keyVR, enabled) == NO_ERROR) {
+        LOGV("set vr_mode to %d", enabled);
+        vr_mode_change = (vr_mode != enabled);
+        if (enable1026) {
+            vr_mode = enabled;
+        } else {
+            vr_mode = A1026_VR_MODE_DISABLED;
+        }
+        param.remove(key);
+    }
+    status = NO_ERROR;
+
+    // reading routing parameter
     if (param.getInt(key, device) == NO_ERROR) {
         LOGV("set input routing %x", device);
         if (device & (device - 1)) {

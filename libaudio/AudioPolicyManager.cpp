@@ -969,6 +969,7 @@ audio_io_handle_t AudioPolicyManager::getInput(int inputSource,
     // convert input source to input device
     switch(inputSource) {
     case AUDIO_SOURCE_DEFAULT:
+    case AUDIO_SOURCE_VOICE_RECOGNITION:
     case AUDIO_SOURCE_MIC:
         if (mForceUse[AudioSystem::FOR_RECORD] == AudioSystem::FORCE_BT_SCO &&
             mAvailableInputDevices & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
