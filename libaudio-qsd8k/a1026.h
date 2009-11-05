@@ -192,6 +192,11 @@ enum A1026_PathID {
         A1026_PATH_CAMCORDER
 };
 
+enum A1026_VR_Mode {
+        A1026_VR_MODE_DISABLED = 0,
+        A1026_VR_MODE_ENABLED = 1
+};
+
 /* noise suppression states */
 enum A1026_NS_states {
 	A1026_NS_STATE_AUTO,	/* leave mode as selected by driver  */
