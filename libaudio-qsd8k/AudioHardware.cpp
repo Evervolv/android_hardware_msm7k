@@ -907,22 +907,22 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	            //TODO: what do we do for camcorder when in call?
 	        case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
 	        case SND_DEVICE_HANDSET_BACK_MIC:
-                    new_pathid = A1026_PATH_INCALL_VR_RECEIVER;
+                    new_pathid = A1026_PATH_INCALL_RECEIVER;
                     break;
                 case SND_DEVICE_HEADSET:
                 case SND_DEVICE_HEADSET_AND_SPEAKER:
                 case SND_DEVICE_FM_HEADSET:
                 case SND_DEVICE_FM_SPEAKER:
-	            new_pathid = A1026_PATH_INCALL_VR_HEADSET;
+	            new_pathid = A1026_PATH_INCALL_HEADSET;
 	            break;
 	        case SND_DEVICE_SPEAKER:
 	            //TODO: what do we do for camcorder when in call?
 	        case SND_DEVICE_SPEAKER_BACK_MIC:
-	            new_pathid = A1026_PATH_INCALL_VR_SPEAKER;
+	            new_pathid = A1026_PATH_INCALL_SPEAKER;
 	            break;
 	        case SND_DEVICE_BT:
 	        case SND_DEVICE_BT_EC_OFF:
-	            new_pathid = A1026_PATH_INCALL_VR_BT;
+	            new_pathid = A1026_PATH_INCALL_BT;
 	            break;
 	        default:
 	            break;
@@ -956,10 +956,10 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         case SND_DEVICE_NO_MIC_HEADSET:
 	        if (vr_mode == A1026_VR_MODE_ENABLED) {
 	            if (vr_uses_ns) {
-	                new_pathid = A1026_PATH_INCALL_VR_RECEIVER; // A1026_PATH_VR_NS_RECEIVER
+	                new_pathid = A1026_PATH_VR_NS_RECEIVER;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_RECEIVER");
 	            } else {
-	                new_pathid = A1026_PATH_INCALL_VR_RECEIVER; // A1026_PATH_VR_NO_NS_RECEIVER
+	                new_pathid = A1026_PATH_VR_NO_NS_RECEIVER;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_RECEIVER");
 	            }
 	        } else {
@@ -973,10 +973,10 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         case SND_DEVICE_FM_SPEAKER:
 	        if (vr_mode == A1026_VR_MODE_ENABLED) {
 	            if (vr_uses_ns) {
-	                new_pathid = A1026_PATH_INCALL_VR_HEADSET; // A1026_PATH_VR_NS_HEADSET
+	                new_pathid = A1026_PATH_VR_NS_HEADSET;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_HEADSET");
 	            } else {
-	                new_pathid = A1026_PATH_INCALL_VR_HEADSET; // A1026_PATH_VR_NO_NS_HEADSET
+	                new_pathid = A1026_PATH_VR_NO_NS_HEADSET;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_HEADSET");
 	            }
 	        } else {
@@ -987,10 +987,10 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         case SND_DEVICE_SPEAKER:
 	        if (vr_mode == A1026_VR_MODE_ENABLED) {
 	            if (vr_uses_ns) {
-	                new_pathid = A1026_PATH_INCALL_VR_SPEAKER; // A1026_PATH_VR_NS_SPEAKER
+	                new_pathid = A1026_PATH_VR_NS_SPEAKER;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_SPEAKER");
 	            } else {
-	                new_pathid = A1026_PATH_INCALL_VR_SPEAKER; // A1026_PATH_VR_NO_NS_SPEAKER
+	                new_pathid = A1026_PATH_VR_NO_NS_SPEAKER;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_SPEAKER");
 	            }
 	        } else {
@@ -1007,10 +1007,10 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         case SND_DEVICE_BT_EC_OFF:
 	        if (vr_mode == A1026_VR_MODE_ENABLED) {
 	            if (vr_uses_ns) {
-	                new_pathid = A1026_PATH_INCALL_VR_BT; // A1026_PATH_VR_NS_BT
+	                new_pathid = A1026_PATH_VR_NS_BT;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_BT");
 	            } else {
-	                new_pathid = A1026_PATH_INCALL_VR_BT; // A1026_PATH_VR_NO_NS_BT
+	                new_pathid = A1026_PATH_VR_NO_NS_BT;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_BT");
 	            }
 	        } else {
