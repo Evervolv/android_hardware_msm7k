@@ -988,6 +988,9 @@ audio_io_handle_t AudioPolicyManager::getInput(int inputSource,
     AudioInputDescriptor *inputDesc = new AudioInputDescriptor();
     // convert input source to input device
     switch(inputSource) {
+    case AUDIO_SOURCE_VOICE_RECOGNITION:
+        // use the default recording source but take into account the voice recognition config
+        // before returning the input
     case AUDIO_SOURCE_DEFAULT:
     case AUDIO_SOURCE_MIC:
         if (mForceUse[AudioSystem::FOR_RECORD] == AudioSystem::FORCE_BT_SCO &&
@@ -1018,6 +1021,7 @@ audio_io_handle_t AudioPolicyManager::getInput(int inputSource,
         LOGW("getInput() invalid input source %d", inputSource);
         return NULL;
     }
+    inputDesc->mInputSource = inputSource;
     inputDesc->mDevice = device;
     inputDesc->mSamplingRate = samplingRate;
     inputDesc->mFormat = format;
@@ -1041,6 +1045,7 @@ audio_io_handle_t AudioPolicyManager::getInput(int inputSource,
         return NULL;
     }
     mInputs.add(input, inputDesc);
+
     return input;
 }
 
@@ -1063,6 +1068,12 @@ status_t AudioPolicyManager::startInput(audio_io_handle_t input)
     }
     AudioParameter param = AudioParameter();
     param.addInt(String8(AudioParameter::keyRouting), (int)inputDesc->mDevice);
+
+    // use Voice Recognition mode or not for this input based on input source
+    int vr_enabled = inputDesc->mInputSource == AUDIO_SOURCE_VOICE_RECOGNITION ? 1 : 0;
+    param.addInt(String8("vr_mode"), vr_enabled);
+    LOGV("AudioPolicyManager::getInput(%d), setting vr_mode to %d", inputSource, vr_enabled);
+
     mpClientInterface->setParameters(input, param.toString());
 
     inputDesc->mRefCount = 1;
