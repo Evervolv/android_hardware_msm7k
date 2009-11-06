@@ -1659,15 +1659,14 @@ status_t AudioHardware::AudioStreamInMSM72xx::dump(int fd, const Vector<String16
 status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyValuePairs)
 {
     AudioParameter param = AudioParameter(keyValuePairs);
-    String8 key = String8(AudioParameter::keyRouting);
     status_t status = NO_ERROR;
     int device;
-    String8 keyVR = String8(KEY_A1026_VR_MODE);
+    String8 key = String8(KEY_A1026_VR_MODE);
     int enabled;
     LOGV("AudioStreamInMSM72xx::setParameters() %s", keyValuePairs.string());
 
     // reading voice recognition mode parameter
-    if (param.getInt(keyVR, enabled) == NO_ERROR) {
+    if (param.getInt(key, enabled) == NO_ERROR) {
         LOGV("set vr_mode to %d", enabled);
         vr_mode_change = (vr_mode != enabled);
         if (enable1026) {
@@ -1677,9 +1676,9 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
         }
         param.remove(key);
     }
-    status = NO_ERROR;
 
     // reading routing parameter
+    key = String8(AudioParameter::keyRouting);
     if (param.getInt(key, device) == NO_ERROR) {
         LOGV("set input routing %x", device);
         if (device & (device - 1)) {
