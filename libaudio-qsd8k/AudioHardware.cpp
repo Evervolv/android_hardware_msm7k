@@ -967,6 +967,8 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
        }
     } else if (Record == 1) {
         switch (Routes) {
+        case SND_DEVICE_SPEAKER:
+            // default output is speaker, recording from phone mic, user RECEIVER configuration
         case SND_DEVICE_HANDSET:
         case SND_DEVICE_NO_MIC_HEADSET:
 	        if (vr_mode == A1026_VR_MODE_ENABLED) {
@@ -997,20 +999,6 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        } else {
 	            new_pathid = A1026_PATH_RECORD_HEADSET; /* EXT-MIC Recording: NS disable, Headset MIC */
 	            LOGV("A1026 control: new path is A1026_PATH_RECORD_HEADSET");
-	        }
-	        break;
-        case SND_DEVICE_SPEAKER:
-	        if (vr_mode == A1026_VR_MODE_ENABLED) {
-	            if (vr_uses_ns) {
-	                new_pathid = A1026_PATH_VR_NS_SPEAKER;
-	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_SPEAKER");
-	            } else {
-	                new_pathid = A1026_PATH_VR_NO_NS_SPEAKER;
-	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_SPEAKER");
-	            }
-	        } else {
-	            new_pathid = A1026_PATH_RECORD_SPEAKER; /* INT-MIC: NS FT mode, Main MIC */
-	            LOGV("A1026 control: new path is A1026_PATH_RECORD_SPEAKER");
 	        }
 	        break;
         case SND_DEVICE_SPEAKER_BACK_MIC:
