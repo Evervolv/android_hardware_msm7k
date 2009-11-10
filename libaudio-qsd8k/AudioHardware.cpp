@@ -790,6 +790,7 @@ status_t AudioHardware::updateBT(void)
 // always call with mutex held
 status_t AudioHardware::updateACDB(void)
 {
+
     int fd = 0;
     int acdb_id = -1;
     uint32_t id[2];
@@ -850,10 +851,16 @@ status_t AudioHardware::updateACDB(void)
             case SND_DEVICE_HANDSET:
             case SND_DEVICE_NO_MIC_HEADSET:
             case SND_DEVICE_SPEAKER:
+                if (vr_mode == A1026_VR_MODE_DISABLED) {
+                    acdb_id = ACDB_ID_INT_MIC_REC;
+                } else {
+                    acdb_id = ACDB_ID_INT_MIC_VR;
+                }
+                break;
             case SND_DEVICE_SPEAKER_BACK_MIC:
             case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
             case SND_DEVICE_HANDSET_BACK_MIC:
-                acdb_id = ACDB_ID_INT_MIC_REC;
+                acdb_id = ACDB_ID_CAMCORDER;
                 break;
             default:
                 break;
@@ -908,21 +915,25 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
 	        case SND_DEVICE_HANDSET_BACK_MIC:
                     new_pathid = A1026_PATH_INCALL_RECEIVER;
+                    LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
                     break;
                 case SND_DEVICE_HEADSET:
                 case SND_DEVICE_HEADSET_AND_SPEAKER:
                 case SND_DEVICE_FM_HEADSET:
                 case SND_DEVICE_FM_SPEAKER:
 	            new_pathid = A1026_PATH_INCALL_HEADSET;
+	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
 	        case SND_DEVICE_SPEAKER:
 	            //TODO: what do we do for camcorder when in call?
 	        case SND_DEVICE_SPEAKER_BACK_MIC:
 	            new_pathid = A1026_PATH_INCALL_SPEAKER;
+	            LOGV("A1026 control: new path is A1026_PATH_INCALL_SPEAKER");
 	            break;
 	        case SND_DEVICE_BT:
 	        case SND_DEVICE_BT_EC_OFF:
 	            new_pathid = A1026_PATH_INCALL_BT;
+	            LOGV("A1026 control: new path is A1026_PATH_INCALL_BT");
 	            break;
 	        default:
 	            break;
@@ -932,19 +943,23 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_HANDSET:
 	        case SND_DEVICE_NO_MIC_HEADSET:
                     new_pathid = A1026_PATH_INCALL_RECEIVER; /* NS CT mode, Dual MIC */
+                    LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
                     break;
                 case SND_DEVICE_HEADSET:
                 case SND_DEVICE_HEADSET_AND_SPEAKER:
                 case SND_DEVICE_FM_HEADSET:
                 case SND_DEVICE_FM_SPEAKER:
 	            new_pathid = A1026_PATH_INCALL_HEADSET; /* NS disable, Headset MIC */
+	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
 	        case SND_DEVICE_SPEAKER:
 	            new_pathid = A1026_PATH_INCALL_SPEAKER; /* NS FT mode, Main MIC */
+	            LOGV("A1026 control: new path is A1026_PATH_INCALL_SPEAKER");
 	            break;
 	        case SND_DEVICE_BT:
 	        case SND_DEVICE_BT_EC_OFF:
 	            new_pathid = A1026_PATH_INCALL_BT; /* QCOM NS, BT MIC */
+	            LOGV("A1026 control: new path is A1026_PATH_INCALL_BT");
 	            break;
 	        default:
 	            break;
