@@ -126,13 +126,13 @@ private:
 
             status_t    dump(int fd);
 
-            int      mInputSource;                      //
             uint32_t mSamplingRate;                     //
             uint32_t mFormat;                           // input configuration
             uint32_t mChannels;                         //
             AudioSystem::audio_in_acoustics mAcoustics; //
             uint32_t mDevice;                           // current device this input is routed to
             uint32_t mRefCount;                         // number of AudioRecord clients using this output
+            int      mInputSource;                     // input source selected by application (mediarecorder.h)
         };
 
         // stream descriptor used for volume control
@@ -161,6 +161,10 @@ private:
         uint32_t getDeviceForStrategy(routing_strategy strategy);
         // change the route of the specified output
         void setOutputDevice(audio_io_handle_t output, uint32_t device, bool force = false, int delayMs = 0);
+        // select input device corresponding to requested audio source
+        uint32_t getDeviceForInputSource(int inputSource);
+        // return io handle of active input or 0 if no input is active
+        audio_io_handle_t getActiveInput();
         // compute the actual volume for a given stream according to the requested index and a particular
         // device
         float computeVolume(int stream, int index, audio_io_handle_t output, uint32_t device);
