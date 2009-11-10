@@ -466,6 +466,21 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
             LOGE("setDeviceConnectionState() invalid state: %x", state);
             return BAD_VALUE;
         }
+
+        audio_io_handle_t activeInput = getActiveInput();
+        if (activeInput != 0) {
+            AudioInputDescriptor *inputDesc = mInputs.valueFor(activeInput);
+            uint32_t newDevice = getDeviceForInputSource(inputDesc->mInputSource);
+            if (newDevice != inputDesc->mDevice) {
+                LOGV("setDeviceConnectionState() changing device from %x to %x for input %d",
+                        inputDesc->mDevice, newDevice, activeInput);
+                inputDesc->mDevice = newDevice;
+                AudioParameter param = AudioParameter();
+                param.addInt(String8(AudioParameter::keyRouting), (int)newDevice);
+                mpClientInterface->setParameters(activeInput, param.toString());
+            }
+        }
+
         return NO_ERROR;
     }
 
@@ -757,7 +772,7 @@ audio_io_handle_t AudioPolicyManager::getOutput(AudioSystem::stream_type stream,
                     samplingRate, format, channels);
             mpClientInterface->closeOutput(output);
             delete outputDesc;
-            return NULL;
+            return 0;
         }
         mOutputs.add(output, outputDesc);
         return output;
@@ -765,7 +780,7 @@ audio_io_handle_t AudioPolicyManager::getOutput(AudioSystem::stream_type stream,
 
     if (channels != 0 && channels != AudioSystem::CHANNEL_OUT_MONO &&
         channels != AudioSystem::CHANNEL_OUT_STEREO) {
-        return NULL;
+        return 0;
     }
     // open a non direct output
 
@@ -961,44 +976,32 @@ audio_io_handle_t AudioPolicyManager::getInput(int inputSource,
                                     AudioSystem::audio_in_acoustics acoustics)
 {
     audio_io_handle_t input = 0;
-    uint32_t device;
+    uint32_t device = getDeviceForInputSource(inputSource);
 
     LOGV("getInput() inputSource %d, samplingRate %d, format %d, channels %x, acoustics %x", inputSource, samplingRate, format, channels, acoustics);
 
-    AudioInputDescriptor *inputDesc = new AudioInputDescriptor();
-    // convert input source to input device
+    if (device == 0) {
+        return 0;
+    }
+
+    // adapt channel selection to input source
     switch(inputSource) {
-    case AUDIO_SOURCE_DEFAULT:
-    case AUDIO_SOURCE_VOICE_RECOGNITION:
-    case AUDIO_SOURCE_MIC:
-        if (mForceUse[AudioSystem::FOR_RECORD] == AudioSystem::FORCE_BT_SCO &&
-            mAvailableInputDevices & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
-            device = AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET;
-        } else if (mAvailableInputDevices & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
-            device = AudioSystem::DEVICE_IN_WIRED_HEADSET;
-        } else {
-            device = AudioSystem::DEVICE_IN_BUILTIN_MIC;
-        }
-        break;
-    case AUDIO_SOURCE_CAMCORDER:
-        device = AudioSystem::DEVICE_IN_BUILTIN_MIC;
-        break;
     case AUDIO_SOURCE_VOICE_UPLINK:
-        device = AudioSystem::DEVICE_IN_VOICE_CALL;
         channels = AudioSystem::CHANNEL_IN_VOICE_UPLINK;
         break;
     case AUDIO_SOURCE_VOICE_DOWNLINK:
-        device = AudioSystem::DEVICE_IN_VOICE_CALL;
         channels = AudioSystem::CHANNEL_IN_VOICE_DNLINK;
         break;
     case AUDIO_SOURCE_VOICE_CALL:
-        device = AudioSystem::DEVICE_IN_VOICE_CALL;
         channels = (AudioSystem::CHANNEL_IN_VOICE_UPLINK | AudioSystem::CHANNEL_IN_VOICE_DNLINK);
         break;
     default:
-        LOGW("getInput() invalid input source %d", inputSource);
-        return NULL;
+        break;
     }
+
+    AudioInputDescriptor *inputDesc = new AudioInputDescriptor();
+
+    inputDesc->mInputSource = inputSource;
     inputDesc->mDevice = device;
     inputDesc->mSamplingRate = samplingRate;
     inputDesc->mFormat = format;
@@ -1019,7 +1022,7 @@ audio_io_handle_t AudioPolicyManager::getInput(int inputSource,
                 samplingRate, format, channels);
         mpClientInterface->closeInput(input);
         delete inputDesc;
-        return NULL;
+        return 0;
     }
     mInputs.add(input, inputDesc);
     return input;
@@ -1036,12 +1039,11 @@ status_t AudioPolicyManager::startInput(audio_io_handle_t input)
     AudioInputDescriptor *inputDesc = mInputs.valueAt(index);
 
     // refuse 2 active AudioRecord clients at the same time
-    for (size_t i = 0; i < mInputs.size(); i++) {
-        if (mInputs.valueAt(i)->mRefCount > 0) {
-            LOGW("startInput() input %d, other input %d already started", input, mInputs.keyAt(i));
-            return INVALID_OPERATION;
-        }
+    if (getActiveInput() != 0) {
+        LOGW("startInput() input %d failed: other input already started", input);
+        return INVALID_OPERATION;
     }
+
     AudioParameter param = AudioParameter();
     param.addInt(String8(AudioParameter::keyRouting), (int)inputDesc->mDevice);
     mpClientInterface->setParameters(input, param.toString());
@@ -1503,6 +1505,49 @@ void AudioPolicyManager::setOutputDevice(audio_io_handle_t output, uint32_t devi
         oldDevice == (AudioSystem::DEVICE_OUT_SPEAKER | AudioSystem::DEVICE_OUT_WIRED_HEADPHONE)) {
         setStrategyMute(STRATEGY_MEDIA, false, output, delayMs);
     }
+}
+
+uint32_t AudioPolicyManager::getDeviceForInputSource(int inputSource)
+{
+    uint32_t device;
+
+    switch(inputSource) {
+    case AUDIO_SOURCE_DEFAULT:
+    case AUDIO_SOURCE_MIC:
+    case AUDIO_SOURCE_VOICE_RECOGNITION:
+        if (mForceUse[AudioSystem::FOR_RECORD] == AudioSystem::FORCE_BT_SCO &&
+            mAvailableInputDevices & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
+            device = AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET;
+        } else if (mAvailableInputDevices & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
+            device = AudioSystem::DEVICE_IN_WIRED_HEADSET;
+        } else {
+            device = AudioSystem::DEVICE_IN_BUILTIN_MIC;
+        }
+        break;
+    case AUDIO_SOURCE_CAMCORDER:
+        device = AudioSystem::DEVICE_IN_BUILTIN_MIC;
+        break;
+    case AUDIO_SOURCE_VOICE_UPLINK:
+    case AUDIO_SOURCE_VOICE_DOWNLINK:
+    case AUDIO_SOURCE_VOICE_CALL:
+        device = AudioSystem::DEVICE_IN_VOICE_CALL;
+        break;
+    default:
+        LOGW("getInput() invalid input source %d", inputSource);
+        device = 0;
+        break;
+    }
+    return device;
+}
+
+audio_io_handle_t AudioPolicyManager::getActiveInput()
+{
+    for (size_t i = 0; i < mInputs.size(); i++) {
+        if (mInputs.valueAt(i)->mRefCount > 0) {
+            return mInputs.keyAt(i);
+        }
+    }
+    return 0;
 }
 
 float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t output, uint32_t device)
