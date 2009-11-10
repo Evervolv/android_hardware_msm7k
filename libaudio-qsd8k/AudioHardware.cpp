@@ -71,7 +71,7 @@ static int voice_started = 0;
 static int fd_fm_device = -1;
 static int stream_volume = -300;
 // use VR mode on inputs: 1 == VR mode enabled when selected, 0 = VR mode disabled when selected
-static int vr_mode = A1026_VR_MODE_DISABLED;
+static int vr_mode_enabled;
 static bool vr_mode_change = false;
 static int vr_uses_ns = 0;
 static int enable1026 = 1;
@@ -150,7 +150,7 @@ AudioHardware::AudioHardware() :
     }
 
     vr_mode_change = false;
-    vr_mode = A1026_VR_MODE_DISABLED;
+    vr_mode_enabled = 0;
     enable1026 = 1;
     char value[PROPERTY_VALUE_MAX];
     // Check the system property to enable or not the special recording modes
@@ -266,7 +266,7 @@ status_t AudioHardware::setMode(int mode)
 {
     // VR mode is never used in a call and must be cleared when entering the IN_CALL mode
     if (mode == AudioSystem::MODE_IN_CALL) {
-        vr_mode = A1026_VR_MODE_DISABLED;
+        vr_mode_enabled = 0;
     }
 
     status_t status = AudioHardwareBase::setMode(mode);
@@ -690,41 +690,69 @@ status_t AudioHardware::set_mRecordState(bool onoff)
 status_t AudioHardware::doA1026_init(void)
 {
     struct a1026img fwimg;
-    char *fn = NULL, *path = NULL;
     char char_tmp = 0;
-    int rc = 0, count = 0;
-    unsigned char local_vpimg_buf[32*1024];
-    FILE *fp;
+    unsigned char local_vpimg_buf[A1026_MAX_FW_SIZE], *ptr = local_vpimg_buf;
+    int rc = 0, fw_fd = -1;
+    ssize_t nr;
+    size_t remaining;
+    struct stat fw_stat;
 
-    fn = "/system/etc/vpimg";
-    path = "/dev/audience_a1026";
+    static const char *const fn = "/system/etc/vpimg";
+    static const char *const path = "/dev/audience_a1026";
+
+    if (fd_a1026 < 0)
+        fd_a1026 = open(path, O_RDWR | O_NONBLOCK, 0);
 
     if (fd_a1026 < 0) {
-        fd_a1026 = open(path, O_RDWR|O_NONBLOCK, 0);
-	if (fd_a1026 < 0) {
-		LOGE("Cannot open %s %d\n", path, fd_a1026);
-		support_a1026 = 0;
-		goto open_drv_err;
-	}
+        LOGE("Cannot open %s %d\n", path, fd_a1026);
+        support_a1026 = 0;
+        goto open_drv_err;
     }
 
-    fp = fopen(fn, "rb");
-    if (!fp) {
+    fw_fd = open(fn, O_RDONLY);
+    if (fw_fd < 0) {
         LOGE("Fail to open %s\n", fn);
         goto ld_img_error;
     } else LOGI("open %s success\n", fn);
 
-    memset(local_vpimg_buf, 0, sizeof(local_vpimg_buf));
-
-    while(!feof(fp)) {
-        fread(&char_tmp, sizeof(unsigned char), 1, fp);
-        local_vpimg_buf[count++] = char_tmp;
+    rc = fstat(fw_fd, &fw_stat);
+    if (rc < 0) {
+        LOGE("Cannot stat file %s: %s\n", fn, strerror(errno));
+        goto ld_img_error;
     }
-    fclose(fp);
 
-    LOGI("Total %d bytes put to user space buffer.\n", --count);
+    remaining = (int)fw_stat.st_size;
+
+    LOGI("Firmware %s size %d\n", fn, remaining);
+
+    if (remaining > sizeof(local_vpimg_buf)) {
+        LOGE("File %s size %d exceeds internal limit %d\n",
+             fn, remaining, sizeof(local_vpimg_buf));
+        goto ld_img_error;
+    }
+
+    while (remaining) {
+        nr = read(fw_fd, ptr, remaining);
+        if (nr < 0) {
+            LOGE("Error reading firmware: %s\n", strerror(errno));
+            goto ld_img_error;
+        }
+        else if (!nr) {
+            if (remaining)
+                LOGW("EOF reading firmware %s while %d bytes remain\n",
+                     fn, remaining);
+            break;
+        }
+        remaining -= nr;
+        ptr += nr;
+    }
+
+    close (fw_fd);
+    fw_fd = -1;
+
     fwimg.buf = local_vpimg_buf;
-    fwimg.img_size = count;
+    fwimg.img_size = (int)(fw_stat.st_size - remaining);
+    LOGI("Total %d bytes put to user space buffer.\n", fwimg.img_size);
 
     rc = ioctl(fd_a1026, A1026_BOOTUP_INIT, &fwimg);
     if (!rc) {
@@ -734,6 +762,8 @@ status_t AudioHardware::doA1026_init(void)
         LOGE("audience_a1026 init failed\n");
 
 ld_img_error:
+    if (fw_fd >= 0)
+        close(fw_fd);
     close(fd_a1026);
 open_drv_err:
     fd_a1026 = -1;
@@ -741,7 +771,6 @@ open_drv_err:
 }
 
 status_t AudioHardware::get_snd_dev(void)
-
 {
     Mutex::Autolock lock(mLock);
     return mCurSndDevice;
@@ -758,7 +787,7 @@ status_t AudioHardware::updateBT(void)
        return -1;
     }
     int rc = 0;
-    if (mBluetoothIdRx != -1) {
+    if (mBluetoothIdRx != -1UL) {
         id[0] = mBluetoothIdRx;
         id[1] = curr_out_device;
         LOGE("(mBluetoothIdRx, curr_out_device) = (%d, %d)", mBluetoothIdRx, curr_out_device);
@@ -771,7 +800,7 @@ status_t AudioHardware::updateBT(void)
            LOGD("update TX ACDB %d success", mBluetoothIdRx);
     }
 
-    if (mBluetoothIdTx != -1) {
+    if (mBluetoothIdTx != -1UL) {
         id[0] = mBluetoothIdTx;
         id[1] = curr_mic_device;
         LOGE("(mBluetoothIdTx, curr_out_device) = (%d, %d)", mBluetoothIdTx, curr_out_device);
@@ -851,7 +880,7 @@ status_t AudioHardware::updateACDB(void)
             case SND_DEVICE_HANDSET:
             case SND_DEVICE_NO_MIC_HEADSET:
             case SND_DEVICE_SPEAKER:
-                if (vr_mode == A1026_VR_MODE_DISABLED) {
+                if (vr_mode_enabled == 0) {
                     acdb_id = ACDB_ID_INT_MIC_REC;
                 } else {
                     acdb_id = ACDB_ID_INT_MIC_VR;
@@ -971,7 +1000,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
             // default output is speaker, recording from phone mic, user RECEIVER configuration
         case SND_DEVICE_HANDSET:
         case SND_DEVICE_NO_MIC_HEADSET:
-	        if (vr_mode == A1026_VR_MODE_ENABLED) {
+	        if (vr_mode_enabled) {
 	            if (vr_uses_ns) {
 	                new_pathid = A1026_PATH_VR_NS_RECEIVER;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_RECEIVER");
@@ -988,7 +1017,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         case SND_DEVICE_HEADSET_AND_SPEAKER:
         case SND_DEVICE_FM_HEADSET:
         case SND_DEVICE_FM_SPEAKER:
-	        if (vr_mode == A1026_VR_MODE_ENABLED) {
+	        if (vr_mode_enabled) {
 	            if (vr_uses_ns) {
 	                new_pathid = A1026_PATH_VR_NS_HEADSET;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_HEADSET");
@@ -1008,7 +1037,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        break;
         case SND_DEVICE_BT:
         case SND_DEVICE_BT_EC_OFF:
-	        if (vr_mode == A1026_VR_MODE_ENABLED) {
+	        if (vr_mode_enabled) {
 	            if (vr_uses_ns) {
 	                new_pathid = A1026_PATH_VR_NS_BT;
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_BT");
@@ -1167,7 +1196,7 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
     if ((vr_mode_change) || (sndDevice != -1 && sndDevice != mCurSndDevice)) {
         ret = doAudioRouteOrMute(sndDevice);
         mCurSndDevice = sndDevice;
-        if (mMode == AudioSystem::MODE_IN_CALL &&  mBluetoothIdTx != 0
+        if (mMode == AudioSystem::MODE_IN_CALL && mBluetoothIdTx != 0
                 && sndDevice == SND_DEVICE_BT) {
             ret = updateBT();
         } else if (!ret) ret = updateACDB();
@@ -1670,12 +1699,12 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
 
     // reading voice recognition mode parameter
     if (param.getInt(key, enabled) == NO_ERROR) {
-        LOGV("set vr_mode to %d", enabled);
-        vr_mode_change = (vr_mode != enabled);
+        LOGV("set vr_mode_enabled to %d", enabled);
+        vr_mode_change = (vr_mode_enabled != enabled);
         if (enable1026) {
-            vr_mode = enabled;
+            vr_mode_enabled = enabled;
         } else {
-            vr_mode = A1026_VR_MODE_DISABLED;
+            vr_mode_enabled = 0;
         }
         param.remove(key);
     }
