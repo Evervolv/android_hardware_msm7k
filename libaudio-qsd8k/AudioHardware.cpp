@@ -660,9 +660,6 @@ Incall:
 // always call with mutex held
 status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
 {
-    if (support_a1026 == 1)
-        doAudience_A1026_Control(mMode, mRecordState, device);
-
     if (device == (uint32_t)SND_DEVICE_BT || device == (uint32_t)SND_DEVICE_CARKIT) {
         if (!mBluetoothNrec) {
             device = SND_DEVICE_BT_EC_OFF;
@@ -713,7 +710,7 @@ status_t AudioHardware::doA1026_init(void)
     if (fw_fd < 0) {
         LOGE("Fail to open %s\n", fn);
         goto ld_img_error;
-    } else LOGI("open %s success\n", fn);
+    } else LOGI("open a1026 firmware success\n");
 
     rc = fstat(fw_fd, &fw_stat);
     if (rc < 0) {
@@ -787,7 +784,7 @@ status_t AudioHardware::updateBT(void)
        return -1;
     }
     int rc = 0;
-    if (mBluetoothIdRx != -1UL) {
+    if (mBluetoothIdRx != 0) {
         id[0] = mBluetoothIdRx;
         id[1] = curr_out_device;
         LOGE("(mBluetoothIdRx, curr_out_device) = (%d, %d)", mBluetoothIdRx, curr_out_device);
@@ -800,7 +797,7 @@ status_t AudioHardware::updateBT(void)
            LOGD("update TX ACDB %d success", mBluetoothIdRx);
     }
 
-    if (mBluetoothIdTx != -1UL) {
+    if (mBluetoothIdTx != 0) {
         id[0] = mBluetoothIdTx;
         id[1] = curr_mic_device;
         LOGE("(mBluetoothIdTx, curr_out_device) = (%d, %d)", mBluetoothIdTx, curr_out_device);
@@ -1092,116 +1089,128 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 
 status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
 {
-    Mutex::Autolock lock(mLock);
-    uint32_t outputDevices = mOutput->devices();
     status_t ret = NO_ERROR;
-    int sndDevice = -1;
+    int check_a1026_state = 0;
 
-    if (input != NULL) {
-        uint32_t inputDevice = input->devices();
-        LOGI("do input routing device %x\n", inputDevice);
-        if (inputDevice != 0) {
-            if (inputDevice & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
+    {
+        Mutex::Autolock lock(mLock);
+        uint32_t outputDevices = mOutput->devices();
+        int sndDevice = -1;
+        if (input != NULL) {
+            uint32_t inputDevice = input->devices();
+            LOGI("do input routing device %x\n", inputDevice);
+            if (inputDevice != 0) {
+                if (inputDevice & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
+                    LOGI("Routing audio to Bluetooth PCM\n");
+                    sndDevice = SND_DEVICE_BT;
+                } else if (inputDevice & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
+                    if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
+                        (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
+                        LOGI("Routing audio to Wired Headset and Speaker\n");
+                        sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
+                    } else {
+                        LOGI("Routing audio to Wired Headset\n");
+                        sndDevice = SND_DEVICE_HEADSET;
+                    }
+                } else if (inputDevice & AudioSystem::DEVICE_IN_BACK_MIC) {
+                    if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
+                        LOGI("Routing audio to Speakerphone with back mic\n");
+                        sndDevice = SND_DEVICE_SPEAKER_BACK_MIC;
+                    } else if (outputDevices == AudioSystem::DEVICE_OUT_EARPIECE) {
+                        LOGI("Routing audio to Handset with back mic\n");
+                        sndDevice = SND_DEVICE_HANDSET_BACK_MIC;
+                    } else {
+                        LOGI("Routing audio to Headset with back mic\n");
+                        sndDevice = SND_DEVICE_NO_MIC_HEADSET_BACK_MIC;
+                    }
+                } else {
+                    if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
+                        LOGI("Routing audio to Speakerphone\n");
+                        sndDevice = SND_DEVICE_SPEAKER;
+                    } else if (outputDevices == AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
+                        LOGI("Routing audio to Speakerphone\n");
+                        sndDevice = SND_DEVICE_NO_MIC_HEADSET;
+                    } else {
+                        LOGI("Routing audio to Handset\n");
+                        sndDevice = SND_DEVICE_HANDSET;
+                    }
+                }
+            }
+            // if inputDevice == 0, restore output routing
+        }
+
+        if (sndDevice == -1) {
+            if (outputDevices & (outputDevices - 1)) {
+                if ((outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) == 0) {
+                    LOGW("Hardware does not support requested route combination (%#X),"
+                         " picking closest possible route...", outputDevices);
+                }
+            }
+
+            if (outputDevices & AudioSystem::DEVICE_OUT_TTY) {
+                    LOGI("Routing audio to TTY\n");
+                    sndDevice = SND_DEVICE_TTY_FULL;
+            } else if (outputDevices &
+                       (AudioSystem::DEVICE_OUT_BLUETOOTH_SCO | AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET)) {
                 LOGI("Routing audio to Bluetooth PCM\n");
                 sndDevice = SND_DEVICE_BT;
-            } else if (inputDevice & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
-                if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
-                    (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
-                    LOGI("Routing audio to Wired Headset and Speaker\n");
+            } else if (outputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT) {
+                LOGI("Routing audio to Bluetooth PCM\n");
+                sndDevice = SND_DEVICE_CARKIT;
+            } else if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
+                       (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
+                LOGI("Routing audio to Wired Headset and Speaker\n");
+                sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
+            } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_SPEAKER) {
+                LOGI("Routing audio to FM Speakerphone (%d,%x)\n", mMode, outputDevices);
+                sndDevice = SND_DEVICE_FM_SPEAKER;
+            } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_HEADPHONE) {
+                if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
+                    LOGI("Routing audio to FM Headset and Speaker (%d,%x)\n", mMode, outputDevices);
                     sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
                 } else {
-                    LOGI("Routing audio to Wired Headset\n");
-                    sndDevice = SND_DEVICE_HEADSET;
+                    LOGI("Routing audio to FM Headset (%d,%x)\n", mMode, outputDevices);
+                    sndDevice = SND_DEVICE_FM_HEADSET;
                 }
-            } else if (inputDevice & AudioSystem::DEVICE_IN_BACK_MIC) {
+            } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
                 if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-                    LOGI("Routing audio to Speakerphone with back mic\n");
-                    sndDevice = SND_DEVICE_SPEAKER_BACK_MIC;
-                } else if (outputDevices == AudioSystem::DEVICE_OUT_EARPIECE) {
-                    LOGI("Routing audio to Handset with back mic\n");
-                    sndDevice = SND_DEVICE_HANDSET_BACK_MIC;
+                    LOGI("Routing audio to No microphone Wired Headset and Speaker (%d,%x)\n", mMode, outputDevices);
+                    sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
                 } else {
-                    LOGI("Routing audio to Headset with back mic\n");
-                    sndDevice = SND_DEVICE_NO_MIC_HEADSET_BACK_MIC;
-                }
-            } else {
-                if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-                    LOGI("Routing audio to Speakerphone\n");
-                    sndDevice = SND_DEVICE_SPEAKER;
-                } else if (outputDevices == AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
-                    LOGI("Routing audio to Speakerphone\n");
+                    LOGI("Routing audio to No microphone Wired Headset (%d,%x)\n", mMode, outputDevices);
                     sndDevice = SND_DEVICE_NO_MIC_HEADSET;
+                }
+            } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) {
+                LOGI("Routing audio to Wired Headset\n");
+                sndDevice = SND_DEVICE_HEADSET;
+            } else if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
+                LOGI("Routing audio to Speakerphone\n");
+                sndDevice = SND_DEVICE_SPEAKER;
+            } else {
+                LOGI("Routing audio to Handset\n");
+                sndDevice = SND_DEVICE_HANDSET;
+            }
+        }
+
+        if ((vr_mode_change) || (sndDevice != -1 && sndDevice != mCurSndDevice)) {
+            ret = doAudioRouteOrMute(sndDevice);
+            if (!ret) {
+                check_a1026_state = 1;
+                mCurSndDevice = sndDevice;
+                if (mMode == AudioSystem::MODE_IN_CALL && mBluetoothIdTx != 0
+                        && sndDevice == (int)SND_DEVICE_BT) {
+                    updateBT();
                 } else {
-                    LOGI("Routing audio to Handset\n");
-                    sndDevice = SND_DEVICE_HANDSET;
+                    updateACDB();
                 }
             }
         }
-        // if inputDevice == 0, restore output routing
     }
 
-    if (sndDevice == -1) {
-        if (outputDevices & (outputDevices - 1)) {
-            if ((outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) == 0) {
-                LOGW("Hardware does not support requested route combination (%#X),"
-                     " picking closest possible route...", outputDevices);
-            }
-        }
-
-        if (outputDevices & AudioSystem::DEVICE_OUT_TTY) {
-                LOGI("Routing audio to TTY\n");
-                sndDevice = SND_DEVICE_TTY_FULL;
-        } else if (outputDevices &
-                   (AudioSystem::DEVICE_OUT_BLUETOOTH_SCO | AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET)) {
-            LOGI("Routing audio to Bluetooth PCM\n");
-            sndDevice = SND_DEVICE_BT;
-        } else if (outputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT) {
-            LOGI("Routing audio to Bluetooth PCM\n");
-            sndDevice = SND_DEVICE_CARKIT;
-        } else if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
-                   (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
-            LOGI("Routing audio to Wired Headset and Speaker\n");
-            sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-        } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_SPEAKER) {
-            LOGI("Routing audio to FM Speakerphone (%d,%x)\n", mMode, outputDevices);
-            sndDevice = SND_DEVICE_FM_SPEAKER;
-        } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_HEADPHONE) {
-            if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-                LOGI("Routing audio to FM Headset and Speaker (%d,%x)\n", mMode, outputDevices);
-                sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-            } else {
-                LOGI("Routing audio to FM Headset (%d,%x)\n", mMode, outputDevices);
-                sndDevice = SND_DEVICE_FM_HEADSET;
-            }
-        } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
-            if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-                LOGI("Routing audio to No microphone Wired Headset and Speaker (%d,%x)\n", mMode, outputDevices);
-                sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-            } else {
-                LOGI("Routing audio to No microphone Wired Headset (%d,%x)\n", mMode, outputDevices);
-                sndDevice = SND_DEVICE_NO_MIC_HEADSET;
-            }
-        } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) {
-            LOGI("Routing audio to Wired Headset\n");
-            sndDevice = SND_DEVICE_HEADSET;
-        } else if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-            LOGI("Routing audio to Speakerphone\n");
-            sndDevice = SND_DEVICE_SPEAKER;
-        } else {
-            LOGI("Routing audio to Handset\n");
-            sndDevice = SND_DEVICE_HANDSET;
-        }
+    if (!ret && check_a1026_state) {
+        if (support_a1026 == 1)
+            ret = doAudience_A1026_Control(mMode, mRecordState, mCurSndDevice);
     }
-
-    if ((vr_mode_change) || (sndDevice != -1 && sndDevice != mCurSndDevice)) {
-        ret = doAudioRouteOrMute(sndDevice);
-        mCurSndDevice = sndDevice;
-        if (mMode == AudioSystem::MODE_IN_CALL && mBluetoothIdTx != 0
-                && sndDevice == SND_DEVICE_BT) {
-            ret = updateBT();
-        } else if (!ret) ret = updateACDB();
-    }
-
     return ret;
 }
 
@@ -1613,8 +1622,8 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 
     if (mState < AUDIO_INPUT_STARTED) {
         mHardware->set_mRecordState(1);
-    if (support_a1026 == 1) {
-        mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 1, mHardware->get_snd_dev());
+        if (support_a1026 == 1) {
+            mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 1, mHardware->get_snd_dev());
         }
         if (ioctl(mFd, AUDIO_START, 0)) {
             LOGE("Error starting record");
@@ -1642,10 +1651,10 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 
 status_t AudioHardware::AudioStreamInMSM72xx::standby()
 {
-        if (mHardware) {
+    if (mHardware) {
         mHardware->set_mRecordState(0);
         if (support_a1026 == 1) {
-        mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 0, mHardware->get_snd_dev());
+            mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 0, mHardware->get_snd_dev());
         }
     }
 
