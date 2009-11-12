@@ -1147,11 +1147,8 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
                 }
             }
 
-            if (outputDevices & AudioSystem::DEVICE_OUT_TTY) {
-                    LOGI("Routing audio to TTY\n");
-                    sndDevice = SND_DEVICE_TTY_FULL;
-            } else if (outputDevices &
-                       (AudioSystem::DEVICE_OUT_BLUETOOTH_SCO | AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET)) {
+            if (outputDevices &
+                (AudioSystem::DEVICE_OUT_BLUETOOTH_SCO | AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET)) {
                 LOGI("Routing audio to Bluetooth PCM\n");
                 sndDevice = SND_DEVICE_BT;
             } else if (outputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT) {
@@ -1161,17 +1158,6 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
                        (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
                 LOGI("Routing audio to Wired Headset and Speaker\n");
                 sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-            } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_SPEAKER) {
-                LOGI("Routing audio to FM Speakerphone (%d,%x)\n", mMode, outputDevices);
-                sndDevice = SND_DEVICE_FM_SPEAKER;
-            } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_HEADPHONE) {
-                if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-                    LOGI("Routing audio to FM Headset and Speaker (%d,%x)\n", mMode, outputDevices);
-                    sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-                } else {
-                    LOGI("Routing audio to FM Headset (%d,%x)\n", mMode, outputDevices);
-                    sndDevice = SND_DEVICE_FM_HEADSET;
-                }
             } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
                 if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
                     LOGI("Routing audio to No microphone Wired Headset and Speaker (%d,%x)\n", mMode, outputDevices);
