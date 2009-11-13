@@ -244,7 +244,7 @@ static bool_t xdr_std_recv_int32(xdr_s_type *xdr, int32 *value)
 static bool_t xdr_std_recv_bytes(xdr_s_type *xdr, uint8 *buf, uint32 len)
 {
     if (xdr->in_next + (int)len > xdr->in_len) return FALSE;     
-    if (buf) memcpy(buf, xdr->in_msg, len);
+    if (buf) memcpy(buf, &xdr->in_msg[xdr->in_next], len);
     xdr->in_next += len;
     xdr->in_next = (xdr->in_next + 3) & ~3;
     return TRUE;

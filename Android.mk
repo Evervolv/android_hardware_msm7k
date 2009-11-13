@@ -13,6 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+common_msm_dirs := libcopybit liblights librpc
+msm7k_dirs := $(common_msm_dirs) boot libgralloc libaudio
+qsd8k_dirs := $(common_msm_dirs) libgralloc-qsd8k libaudio-qsd8k
+
 ifeq ($(TARGET_BOARD_PLATFORM),msm7k)
-  include $(all-subdir-makefiles)
+  include $(call all-named-subdir-makefiles,$(msm7k_dirs))
+else
+  ifeq ($(TARGET_BOARD_PLATFORM),qsd8k)
+    include $(call all-named-subdir-makefiles,$(qsd8k_dirs))
+  endif
 endif

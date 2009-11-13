@@ -25,15 +25,61 @@
 
 #include <hardware_legacy/AudioHardwareBase.h>
 
-extern "C" {
-#include <linux/msm_audio.h>
-}
-
 namespace android {
 
 // ----------------------------------------------------------------------------
 // Kernel driver interface
 //
+/* Source (TX) devices */
+#define ADSP_AUDIO_DEVICE_ID_HANDSET_MIC	0x107ac8d
+#define ADSP_AUDIO_DEVICE_ID_HEADSET_MIC	0x1081510
+#define ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MIC	0x1081512
+#define ADSP_AUDIO_DEVICE_ID_BT_SCO_MIC		0x1081518
+#define ADSP_AUDIO_DEVICE_ID_TTY_HEADSET_MIC	0x108151b
+#define ADSP_AUDIO_DEVICE_ID_I2S_MIC		0x1089bf3
+
+/* Special loopback pseudo device to be paired with an RX device */
+/* with usage ADSP_AUDIO_DEVICE_USAGE_MIXED_PCM_LOOPBACK */
+#define ADSP_AUDIO_DEVICE_ID_MIXED_PCM_LOOPBACK_TX	0x1089bf2
+
+/* Sink (RX) devices */
+#define ADSP_AUDIO_DEVICE_ID_HANDSET_SPKR			0x107ac88
+#define ADSP_AUDIO_DEVICE_ID_HEADSET_SPKR_MONO			0x1081511
+#define ADSP_AUDIO_DEVICE_ID_HEADSET_SPKR_STEREO		0x107ac8a
+#define ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO			0x1081513
+#define ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO_W_MONO_HEADSET     0x108c508
+#define ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO_W_STEREO_HEADSET   0x108c894
+#define ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_STEREO			0x1081514
+#define ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_STEREO_W_MONO_HEADSET   0x108c895
+#define ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_STEREO_W_STEREO_HEADSET	0x108c509
+#define ADSP_AUDIO_DEVICE_ID_BT_SCO_SPKR			0x1081519
+#define ADSP_AUDIO_DEVICE_ID_TTY_HEADSET_SPKR			0x108151c
+#define ADSP_AUDIO_DEVICE_ID_I2S_SPKR				0x1089bf4
+
+#define HANDSET_MIC                ADSP_AUDIO_DEVICE_ID_HANDSET_MIC
+#define HANDSET_SPKR               ADSP_AUDIO_DEVICE_ID_HANDSET_SPKR
+#define HEADSET_MIC                ADSP_AUDIO_DEVICE_ID_HEADSET_MIC
+#define HEADSET_SPKR_MONO          ADSP_AUDIO_DEVICE_ID_HEADSET_SPKR_MONO
+#define HEADSET_SPKR_STEREO        ADSP_AUDIO_DEVICE_ID_HEADSET_SPKR_STEREO
+#define SPKR_PHONE_MIC             ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MIC
+#define SPKR_PHONE_MONO            ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO
+#define SPKR_PHONE_STEREO          ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_STEREO
+#define BT_A2DP_SPKR               ADSP_AUDIO_DEVICE_ID_BT_A2DP_SPKR
+#define BT_SCO_MIC                 ADSP_AUDIO_DEVICE_ID_BT_SCO_MIC
+#define BT_SCO_SPKR                ADSP_AUDIO_DEVICE_ID_BT_SCO_SPKR
+#define TTY_HEADSET_MIC            ADSP_AUDIO_DEVICE_ID_TTY_HEADSET_MIC
+#define TTY_HEADSET_SPKR           ADSP_AUDIO_DEVICE_ID_TTY_HEADSET_SPKR
+#define FM_HEADSET                 ADSP_AUDIO_DEVICE_ID_HEADSET_SPKR_STEREO
+#define FM_SPKR	                   ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO
+#define SPKR_PHONE_HEADSET_STEREO  ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO_W_MONO_HEADSET
+
+#define ACDB_ID_EXT_MIC_REC 307
+#define ACDB_ID_HEADSET_PLAYBACK 407
+#define ACDB_ID_HEADSET_RINGTONE_PLAYBACK 408
+#define ACDB_ID_INT_MIC_REC 507
+#define ACDB_ID_CAMCORDER   508
+#define ACDB_ID_INT_MIC_VR  509
+#define ACDB_ID_SPKR_PLAYBACK 607
 
 #define SAMP_RATE_INDX_8000	0
 #define SAMP_RATE_INDX_11025	1
@@ -53,6 +99,14 @@ namespace android {
 #define EQ_DISABLE   0x0000
 #define RX_IIR_ENABLE   0x0004
 #define RX_IIR_DISABLE  0x0000
+
+#define KEY_A1026_VR_MODE "vr_mode"
+
+struct msm_bt_endpoint {
+    int tx;
+    int rx;
+    char name[64];
+};
 
 struct eq_filter_type {
     int16_t gain;
@@ -80,12 +134,13 @@ struct msm_audio_config {
     uint32_t unused[3];
 };
 
-struct msm_audio_stats {
-    uint32_t out_bytes;
-    uint32_t unused[3];
+struct msm_mute_info {
+    uint32_t mute;
+    uint32_t path;
 };
 
 #define CODEC_TYPE_PCM 0
+#define PCM_FILL_BUFFER_COUNT 1
 #define AUDIO_HW_NUM_OUT_BUF 2  // Number of buffers in audio driver for output
 // TODO: determine actual audio DSP and hardware latency
 #define AUDIO_HW_OUT_LATENCY_MS 0  // Additionnal latency introduced by audio DSP and hardware in ms
@@ -93,6 +148,7 @@ struct msm_audio_stats {
 #define AUDIO_HW_IN_SAMPLERATE 8000                 // Default audio input sample rate
 #define AUDIO_HW_IN_CHANNELS (AudioSystem::CHANNEL_IN_MONO) // Default audio input channel mask
 #define AUDIO_HW_IN_BUFFERSIZE 2048                 // Default audio input buffer size
+#define AUDIO_KERNEL_PCM_IN_BUFFERSIZE 2048
 #define AUDIO_HW_IN_FORMAT (AudioSystem::PCM_16_BIT)  // Default audio input sample format
 // ----------------------------------------------------------------------------
 
@@ -152,7 +208,15 @@ private:
     status_t    dumpInternals(int fd, const Vector<String16>& args);
     uint32_t    getInputSampleRate(uint32_t sampleRate);
     bool        checkOutputStandby();
+    status_t    get_mMode();
+    status_t    get_mRoutes();
+    status_t    set_mRecordState(bool onoff);
+    status_t    doA1026_init();
+    status_t    get_snd_dev();
+    status_t    doAudience_A1026_Control(int Mode, bool Record, uint32_t Routes);
     status_t    doRouting(AudioStreamInMSM72xx *input);
+    status_t    updateACDB();
+    status_t    updateBT();
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
     public:
@@ -229,34 +293,25 @@ private:
     };
 
             static const uint32_t inputSamplingRates[];
+    Mutex       mA1026Lock;
+    bool        mA1026Init;
+            bool        mRecordState;
             bool        mInit;
             bool        mMicMute;
             bool        mBluetoothNrec;
-            uint32_t    mBluetoothId;
+            uint32_t    mBluetoothIdTx;
+            uint32_t    mBluetoothIdRx;
             AudioStreamOutMSM72xx*  mOutput;
             SortedVector <AudioStreamInMSM72xx*>   mInputs;
 
-            msm_snd_endpoint *mSndEndpoints;
-            int mNumSndEndpoints;
+            msm_bt_endpoint *mBTEndpoints;
+            int mNumBTEndpoints;
             int mCurSndDevice;
+            int mNoiseSuppressionState;
 
      friend class AudioStreamInMSM72xx;
             Mutex       mLock;
-
-            int SND_DEVICE_CURRENT;
-            int SND_DEVICE_HANDSET;
-            int SND_DEVICE_SPEAKER;
-            int SND_DEVICE_HEADSET;
-            int SND_DEVICE_BT;
-            int SND_DEVICE_CARKIT;
-            int SND_DEVICE_TTY_FULL;
-            int SND_DEVICE_TTY_VCO;
-            int SND_DEVICE_TTY_HCO;
-            int SND_DEVICE_NO_MIC_HEADSET;
-            int SND_DEVICE_FM_HEADSET;
-            int SND_DEVICE_HEADSET_AND_SPEAKER;
-            int SND_DEVICE_FM_SPEAKER;
-            int SND_DEVICE_BT_EC_OFF;
+            uint32_t        mRoutes[AudioSystem::NUM_MODES];
 };
 
 // ----------------------------------------------------------------------------
