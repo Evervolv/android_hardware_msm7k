@@ -214,33 +214,6 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                             mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
                          newDevice = device;
                     }
-                } else if (device == AudioSystem::DEVICE_OUT_TTY) {
-                    LOGV("setDeviceConnectionState() tty device");
-                    // if connecting a wired headset, we check the following by order of priority
-                    // to request a routing change if necessary:
-                    // 1: we are in call or the strategy phone is active on the hardware output:
-                    //      use device for strategy phone
-                    if (getDeviceForStrategy(STRATEGY_PHONE) == device &&
-                        (mPhoneState == AudioSystem::MODE_IN_CALL ||
-                        mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_PHONE))) {
-                        newDevice = device;
-                    }
-                } else if (device == AudioSystem::DEVICE_OUT_FM_SPEAKER ||
-                           device == AudioSystem::DEVICE_OUT_FM_HEADPHONE) {
-                    LOGV("setDeviceConnectionState() no mic headphone device");
-                    // if connecting a wired headset, we check the following by order of priority
-                    // to request a routing change if necessary:
-                    // 1: the strategy sonification is active on the hardware output:
-                    //      use device for strategy sonification
-                    // 2: the strategy media is active on the hardware output:
-                    //      use device for strategy media
-                    if ((getDeviceForStrategy(STRATEGY_SONIFICATION) & device) &&
-                               mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_SONIFICATION)){
-                        newDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
-                    } else if ((getDeviceForStrategy(STRATEGY_MEDIA) == device) &&
-                               mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)){
-                        newDevice = device;
-                    }
                 }
 
                 // request routing change if necessary
@@ -389,23 +362,6 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     } else if (wasUsedforDtmf &&
                                mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)){
                         newDevice = getDeviceForStrategy(STRATEGY_DTMF);
-                    }
-                } else if (device == AudioSystem::DEVICE_OUT_TTY) {
-                    LOGV("setDeviceConnectionState() tty device");
-                    if (wasUsedforPhone &&
-                        (mPhoneState == AudioSystem::MODE_IN_CALL ||
-                         mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_PHONE))) {
-                        newDevice = getDeviceForStrategy(STRATEGY_PHONE);
-                    }
-                } else if (device == AudioSystem::DEVICE_OUT_FM_SPEAKER ||
-                           device == AudioSystem::DEVICE_OUT_FM_HEADPHONE) {
-                    LOGV("setDeviceConnectionState() no mic headphone device");
-                    if (wasUsedForSonification &&
-                        mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_SONIFICATION)){
-                        newDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
-                    } else if (wasUsedForMedia &&
-                               mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)){
-                        newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
                     }
                 }
             }
@@ -1371,8 +1327,6 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
             // FALL THROUGH
 
         default:    // FORCE_NONE
-            device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_TTY;
-            if (device) break;
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
             if (device) break;
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
@@ -1388,8 +1342,6 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
                 device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT;
                 if (device) break;
             }
-            device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_FM_SPEAKER;
-            if (device) break;
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
             if (device == 0) {
                 LOGE("getDeviceForStrategy() speaker device not found");
@@ -1422,19 +1374,13 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
                 if (device2 == 0) {
                     device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER;
                     if (device2 == 0) {
-                        device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_FM_HEADPHONE;
+                        device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
                         if (device2 == 0) {
-                            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_FM_SPEAKER;
+                            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
                             if (device2 == 0) {
-                                device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
-                                if (device2 == 0) {
-                                    device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
-                                    if (device2 == 0) {
-                                        device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
-                                        if (device == 0) {
-                                            LOGE("getDeviceForStrategy() speaker device not found");
-                                        }
-                                    }
+                                device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
+                                if (device == 0) {
+                                    LOGE("getDeviceForStrategy() speaker device not found");
                                 }
                             }
                         }
