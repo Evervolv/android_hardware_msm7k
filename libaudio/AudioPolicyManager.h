@@ -196,6 +196,7 @@ private:
         String8 mA2dpDeviceAddress;                                         // A2DP device MAC address
         String8 mScoDeviceAddress;                                          // SCO device MAC address
         nsecs_t mMusicStopTime;                                             // time when last music stream was stopped
+        bool    mLimitRingtoneVolume;                                       // limit ringtone volume to music volume if headset connected
 };
 
 };
