@@ -22,7 +22,7 @@
 #define LOG_TAG "QualcommCameraHardware"
 #include <utils/Log.h>
 #include <utils/threads.h>
-#include <utils/MemoryHeapPmem.h>
+#include <binder/MemoryHeapPmem.h>
 #include <utils/String16.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -376,9 +376,9 @@ namespace android {
 #if DLOPEN_LIBQCAMERA == 1
 
             LOGV("loading libqcamera");
-            libqcamera = ::dlopen("libqcamera.so", RTLD_NOW);
+            libqcamera = ::dlopen("liboemcamera.so", RTLD_NOW);
             if (!libqcamera) {
-                LOGE("FATAL ERROR: could not dlopen libqcamera.so: %s", dlerror());
+                LOGE("FATAL ERROR: could not dlopen liboemcamera.so: %s", dlerror());
                 return;
             }
   
@@ -755,9 +755,6 @@ namespace android {
             LOGE("startPreview failed: sensor error.");
             mCameraState = QCS_ERROR;
         }
-
-        // hack to prevent first preview frame from being black
-        mPreviewCount = 0;
 
         LOGV("startPreview X");
         return mCameraState == QCS_PREVIEW_IN_PROGRESS ?

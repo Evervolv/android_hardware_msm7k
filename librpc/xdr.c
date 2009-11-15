@@ -365,7 +365,7 @@ xdr_array (XDR *xdrs,
             if (c == 0)
                 return TRUE;
             *addrp = target = mem_alloc (nodesize);
-            if (*addrp) return FALSE;
+            if (!*addrp) return FALSE;
             memset (target, 0, nodesize);
             break;            
         case XDR_FREE:

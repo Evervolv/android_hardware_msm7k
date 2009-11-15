@@ -42,9 +42,43 @@ static int g_backlight = 255;
 static int g_trackball = -1;
 static int g_buttons = 0;
 static int g_attention = 0;
+static int g_haveAmberLed = 0;
 
 char const*const TRACKBALL_FILE
         = "/sys/class/leds/jogball-backlight/brightness";
+
+char const*const RED_LED_FILE
+        = "/sys/class/leds/red/brightness";
+
+char const*const GREEN_LED_FILE
+        = "/sys/class/leds/green/brightness";
+
+char const*const BLUE_LED_FILE
+        = "/sys/class/leds/blue/brightness";
+
+char const*const AMBER_LED_FILE
+        = "/sys/class/leds/amber/brightness";
+
+char const*const LCD_FILE
+        = "/sys/class/leds/lcd-backlight/brightness";
+
+char const*const RED_FREQ_FILE
+        = "/sys/class/leds/red/device/grpfreq";
+
+char const*const RED_PWM_FILE
+        = "/sys/class/leds/red/device/grppwm";
+
+char const*const RED_BLINK_FILE
+        = "/sys/class/leds/red/device/blink";
+
+char const*const AMBER_BLINK_FILE
+        = "/sys/class/leds/amber/blink";
+
+char const*const KEYBOARD_FILE
+        = "/sys/class/leds/keyboard-backlight/brightness";
+
+char const*const BUTTON_FILE
+        = "/sys/class/leds/button-backlight/brightness";
 
 /**
  * device methods
@@ -57,6 +91,10 @@ void init_globals(void)
 
     // figure out if we have the trackball LED or not
     g_haveTrackballLight = (access(TRACKBALL_FILE, W_OK) == 0) ? 1 : 0;
+
+    /* figure out if we have the amber LED or not.
+       If yes, just support green and amber.         */
+    g_haveAmberLed = (access(AMBER_LED_FILE, W_OK) == 0) ? 1 : 0;
 }
 
 static int
@@ -90,14 +128,13 @@ is_lit(struct light_state_t const* state)
 static int
 handle_trackball_light_locked(struct light_device_t* dev)
 {
-    int mode = 0;
+    int mode = g_attention;
 
-    if (g_attention > 127) {
-        mode = 3;
+    if (mode == 7 && g_backlight) {
+        mode = 0;
     }
-    else if (!g_backlight && g_attention <= 127 && g_attention > 0) {
-        mode = 7;
-    }
+    LOGV("%s g_backlight = %d, mode = %d, g_attention = %d\n",
+        __func__, g_backlight, mode, g_attention);
 
     // If the value isn't changing, don't set it, because this
     // can reset the timer on the breathing mode, which looks bad.
@@ -124,7 +161,7 @@ set_light_backlight(struct light_device_t* dev,
     int brightness = rgb_to_brightness(state);
     pthread_mutex_lock(&g_lock);
     g_backlight = brightness;
-    err = write_int("/sys/class/leds/lcd-backlight/brightness", brightness);
+    err = write_int(LCD_FILE, brightness);
     if (g_haveTrackballLight) {
         handle_trackball_light_locked(dev);
     }
@@ -139,7 +176,7 @@ set_light_keyboard(struct light_device_t* dev,
     int err = 0;
     int on = is_lit(state);
     pthread_mutex_lock(&g_lock);
-    err = write_int("/sys/class/leds/keyboard-backlight/brightness", on?255:0);
+    err = write_int(KEYBOARD_FILE, on?255:0);
     pthread_mutex_unlock(&g_lock);
     return err;
 }
@@ -152,7 +189,7 @@ set_light_buttons(struct light_device_t* dev,
     int on = is_lit(state);
     pthread_mutex_lock(&g_lock);
     g_buttons = on;
-    err = write_int("/sys/class/leds/button-backlight/brightness", on?255:0);
+    err = write_int(BUTTON_FILE, on?255:0);
     pthread_mutex_unlock(&g_lock);
     return err;
 }
@@ -180,23 +217,37 @@ set_speaker_light_locked(struct light_device_t* dev,
     }
 
     colorRGB = state->color;
- 
+
 #if 0
     LOGD("set_led_state colorRGB=%08X, onMS=%d, offMS=%d\n",
             colorRGB, onMS, offMS);
 #endif
-    
+
     red = (colorRGB >> 16) & 0xFF;
     green = (colorRGB >> 8) & 0xFF;
     blue = colorRGB & 0xFF;
 
-    write_int("/sys/class/leds/red/brightness", red);
-    write_int("/sys/class/leds/green/brightness", green);
-    write_int("/sys/class/leds/blue/brightness", blue);
+    if (!g_haveAmberLed) {
+        write_int(RED_LED_FILE, red);
+        write_int(GREEN_LED_FILE, green);
+        write_int(BLUE_LED_FILE, blue);
+    } else {
+        /* all of related red led is replaced by amber */
+        if (red) {
+            write_int(AMBER_LED_FILE, 1);
+            write_int(GREEN_LED_FILE, 0);
+        } else if (green) {
+            write_int(AMBER_LED_FILE, 0);
+            write_int(GREEN_LED_FILE, 1);
+        } else {
+            write_int(GREEN_LED_FILE, 0);
+            write_int(AMBER_LED_FILE, 0);
+        }
+    }
 
-    if (onMS > 0 && offMS > 0) {        
+    if (onMS > 0 && offMS > 0) {
         int totalMS = onMS + offMS;
-        
+
         // the LED appears to blink about once per second if freq is 20
         // 1000ms / 20 = 50
         freq = totalMS / 50;
@@ -204,7 +255,7 @@ set_speaker_light_locked(struct light_device_t* dev,
         // pwm = 0 -> always off
         // pwm = 255 => always on
         pwm = (onMS * 255) / totalMS;
-        
+
         // the low 4 bits are ignored, so round up if necessary
         if (pwm > 0 && pwm < 16)
             pwm = 16;
@@ -215,12 +266,16 @@ set_speaker_light_locked(struct light_device_t* dev,
         freq = 0;
         pwm = 0;
     }
-    
-    if (blink) {
-        write_int("/sys/class/leds/red/device/grpfreq", freq);
-        write_int("/sys/class/leds/red/device/grppwm", pwm);
+
+    if (!g_haveAmberLed) {
+        if (blink) {
+            write_int(RED_FREQ_FILE, freq);
+            write_int(RED_PWM_FILE, pwm);
+        }
+        write_int(RED_BLINK_FILE, blink);
+    } else {
+        write_int(AMBER_BLINK_FILE, blink);
     }
-    write_int("/sys/class/leds/red/device/blink", blink);
 
     return 0;
 }
@@ -273,7 +328,11 @@ set_light_attention(struct light_device_t* dev,
     g_notification = *state;
     LOGV("set_light_attention g_trackball=%d color=0x%08x",
             g_trackball, state->color);
-    g_attention = rgb_to_brightness(state);
+    if (state->flashMode == LIGHT_FLASH_HARDWARE) {
+        g_attention = state->flashOnMS;
+    } else if (state->flashMode == LIGHT_FLASH_NONE) {
+        g_attention = 0;
+    }
     if (g_haveTrackballLight) {
         handle_trackball_light_locked(dev);
     }
@@ -284,7 +343,7 @@ set_light_attention(struct light_device_t* dev,
 
 /** Close the lights device */
 static int
-close_lights(struct light_device_t *dev) 
+close_lights(struct light_device_t *dev)
 {
     if (dev) {
         free(dev);
@@ -338,7 +397,7 @@ static int open_lights(const struct hw_module_t* module, char const* name,
     dev->common.module = (struct hw_module_t*)module;
     dev->common.close = (int (*)(struct hw_device_t*))close_lights;
     dev->set_light = set_light;
-    
+
     *device = (struct hw_device_t*)dev;
     return 0;
 }
