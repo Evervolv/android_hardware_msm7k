@@ -500,22 +500,23 @@ void AudioPolicyManager::setPhoneState(int state)
     uint32_t oldSonificationDevice = getDeviceForStrategy(STRATEGY_SONIFICATION) & ~AudioSystem::DEVICE_OUT_SPEAKER;
     mPhoneState = state;
     bool force = false;
+    AudioOutputDescriptor *hwOutputDesc = mOutputs.valueFor(mHardwareOutput);
     // check if a routing change is required for hardware output in the following
     // order of priority:
     // 1: a stream pertaining to sonification strategy is active
     // 2: new state is incall
     // 3: a stream pertaining to media strategy is active
     // 4: a stream pertaining to DTMF strategy is active
-    if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_SONIFICATION)) {
+    if (hwOutputDesc->isUsedByStrategy(STRATEGY_SONIFICATION)) {
         newDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
     } else if (mPhoneState == AudioSystem::MODE_IN_CALL) {
         newDevice = getDeviceForStrategy(STRATEGY_PHONE);
         // force routing command to audio hardware when starting call
         // even if no device change is needed
         force = true;
-    } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)) {
+    } else if (hwOutputDesc->isUsedByStrategy(STRATEGY_MEDIA)) {
         newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
-    } else if (mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
+    } else if (hwOutputDesc->isUsedByStrategy(STRATEGY_DTMF)) {
         newDevice = getDeviceForStrategy(STRATEGY_DTMF);
     }
 
@@ -533,7 +534,7 @@ void AudioPolicyManager::setPhoneState(int state)
                     if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
                         mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
                         int refCount = mOutputs.valueFor(mA2dpOutput)->mRefCount[i];
-                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i,
+                        hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
                                 refCount);
                         mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i,-refCount);
                     }
@@ -549,7 +550,7 @@ void AudioPolicyManager::setPhoneState(int state)
                     if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
                         mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
                         int refCount = mOutputs.valueFor(mDuplicatedOutput)->mRefCount[i];
-                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i,
+                        hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
                                 refCount);
                         mOutputs.valueFor(mDuplicatedOutput)->changeRefCount((AudioSystem::stream_type)i,-refCount);
                     }
@@ -562,9 +563,9 @@ void AudioPolicyManager::setPhoneState(int state)
                 for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                     if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
                         mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
-                        int refCount = mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
+                        int refCount = hwOutputDesc->mRefCount[i];
                         mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
-                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i, -refCount);
+                        hwOutputDesc->changeRefCount((AudioSystem::stream_type)i, -refCount);
                     }
                 }
             }
@@ -574,9 +575,9 @@ void AudioPolicyManager::setPhoneState(int state)
                 for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                     if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
                         mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mDuplicatedOutput);
-                        int refCount = mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
+                        int refCount = hwOutputDesc->mRefCount[i];
                         mOutputs.valueFor(mDuplicatedOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
-                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i, -refCount);
+                        hwOutputDesc->changeRefCount((AudioSystem::stream_type)i, -refCount);
                     }
                 }
             }
@@ -597,7 +598,7 @@ void AudioPolicyManager::setPhoneState(int state)
     // even if no device change is needed
     if (oldState == AudioSystem::MODE_IN_CALL) {
         if (newDevice == 0) {
-            newDevice = mOutputs.valueFor(mHardwareOutput)->device();
+            newDevice = hwOutputDesc->device();
         }
         force = true;
     }
@@ -611,6 +612,15 @@ void AudioPolicyManager::setPhoneState(int state)
         for (int stream = 0; stream < AudioSystem::NUM_STREAM_TYPES; stream++) {
             handleIncallSonification(stream, true, true);
         }
+    }
+
+    // Flag that ringtone volume must be limited to music volume until we exit MODE_RINGTONE
+    if (state == AudioSystem::MODE_RINGTONE &&
+        (hwOutputDesc->isUsedByStream(AudioSystem::MUSIC) ||
+        (systemTime() - mMusicStopTime) < seconds(SONIFICATION_HEADSET_MUSIC_DELAY))) {
+        mLimitRingtoneVolume = true;
+    } else {
+        mLimitRingtoneVolume = false;
     }
 }
 
@@ -1170,7 +1180,7 @@ extern "C" void destroyAudioPolicyManager(AudioPolicyInterface *interface)
 }
 
 AudioPolicyManager::AudioPolicyManager(AudioPolicyClientInterface *clientInterface)
-: mPhoneState(AudioSystem::MODE_NORMAL), mRingerMode(0), mMusicStopTime(0)
+: mPhoneState(AudioSystem::MODE_NORMAL), mRingerMode(0), mMusicStopTime(0), mLimitRingtoneVolume(false)
 {
     mpClientInterface = clientInterface;
 
@@ -1526,9 +1536,7 @@ float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t
         // when the phone is ringing we must consider that music could have been paused just before
         // by the music application and behave as if music was active if the last music track was
         // just stopped
-        if (outputDesc->isUsedByStream(AudioSystem::MUSIC) ||
-            ((mPhoneState == AudioSystem::MODE_RINGTONE) &&
-             (systemTime() - mMusicStopTime < seconds(SONIFICATION_HEADSET_MUSIC_DELAY)))) {
+        if (outputDesc->isUsedByStream(AudioSystem::MUSIC) || mLimitRingtoneVolume) {
             float musicVol = computeVolume(AudioSystem::MUSIC, mStreams[AudioSystem::MUSIC].mIndexCur, output, device);
             float minVol = (musicVol > SONIFICATION_HEADSET_VOLUME_MIN) ? musicVol : SONIFICATION_HEADSET_VOLUME_MIN;
             if (volume > minVol) {
@@ -1558,9 +1566,9 @@ status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_h
         return INVALID_OPERATION;
     }
 
-    float volume = computeVolume(stream, index, output, device || force);
+    float volume = computeVolume(stream, index, output, device);
     // do not set volume if the float value did not change
-    if (volume != mOutputs.valueFor(output)->mCurVolume[stream]) {
+    if (volume != mOutputs.valueFor(output)->mCurVolume[stream] || force) {
         mOutputs.valueFor(output)->mCurVolume[stream] = volume;
         LOGV("setStreamVolume() for output %d stream %d, volume %f, delay %d", output, stream, volume, delayMs);
         if (stream == AudioSystem::VOICE_CALL ||
