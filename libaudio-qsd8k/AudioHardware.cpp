@@ -60,6 +60,7 @@ static const uint32_t SND_DEVICE_TTY_FULL = 5;
 static const uint32_t SND_DEVICE_HANDSET_BACK_MIC = 20;
 static const uint32_t SND_DEVICE_SPEAKER_BACK_MIC = 21;
 static const uint32_t SND_DEVICE_NO_MIC_HEADSET_BACK_MIC = 28;
+static const uint32_t SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC = 30;
 namespace android {
 static int support_a1026 = 1;
 static int fd_a1026 = -1;
@@ -555,6 +556,10 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall)
            out_device = SPKR_PHONE_HEADSET_STEREO;
            mic_device = HEADSET_MIC;
            LOGD("Stereo Headset + Speaker");
+    } else if (device == SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC) {
+           out_device = SPKR_PHONE_HEADSET_STEREO;
+           mic_device = SPKR_PHONE_MIC;
+           LOGD("Stereo Headset + Speaker and back mic");
     } else if (device == SND_DEVICE_NO_MIC_HEADSET) {
            out_device = HEADSET_SPKR_STEREO;
            mic_device = HANDSET_MIC;
@@ -851,6 +856,7 @@ status_t AudioHardware::updateACDB(void)
                 acdb_id = ACDB_ID_SPKR_PLAYBACK;
                 break;
             case SND_DEVICE_HEADSET_AND_SPEAKER:
+            case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
                 acdb_id = ACDB_ID_HEADSET_RINGTONE_PLAYBACK;
                 break;
             default:
@@ -875,6 +881,7 @@ status_t AudioHardware::updateACDB(void)
             case SND_DEVICE_HEADSET:
             case SND_DEVICE_FM_HEADSET:
             case SND_DEVICE_FM_SPEAKER:
+            case SND_DEVICE_HEADSET_AND_SPEAKER:
                 acdb_id = ACDB_ID_EXT_MIC_REC;
                 break;
             case SND_DEVICE_HANDSET:
@@ -889,6 +896,7 @@ status_t AudioHardware::updateACDB(void)
             case SND_DEVICE_SPEAKER_BACK_MIC:
             case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
             case SND_DEVICE_HANDSET_BACK_MIC:
+            case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
                 acdb_id = ACDB_ID_CAMCORDER;
                 break;
             default:
@@ -950,6 +958,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
                 case SND_DEVICE_HEADSET_AND_SPEAKER:
                 case SND_DEVICE_FM_HEADSET:
                 case SND_DEVICE_FM_SPEAKER:
+                case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
 	            new_pathid = A1026_PATH_INCALL_HEADSET;
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
@@ -1033,6 +1042,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         case SND_DEVICE_SPEAKER_BACK_MIC:
         case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
         case SND_DEVICE_HANDSET_BACK_MIC:
+        case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
 	        new_pathid = A1026_PATH_CAMCORDER; /* CAM-Coder: NS FT mode, Back MIC */
 	        LOGV("A1026 control: new path is A1026_PATH_CAMCORDER");
 	        break;
@@ -1115,7 +1125,11 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
                     sndDevice = SND_DEVICE_HEADSET;
                 }
             } else if (inputDevice & AudioSystem::DEVICE_IN_BACK_MIC) {
-                if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
+                if (outputDevices & (AudioSystem:: DEVICE_OUT_WIRED_HEADSET) &&
+                       (outputDevices & AudioSystem:: DEVICE_OUT_SPEAKER)) {
+                    LOGI("Routing audio to Wired Headset and Speaker with back mic\n");
+                    sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC;
+                } else if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
                     LOGI("Routing audio to Speakerphone with back mic\n");
                     sndDevice = SND_DEVICE_SPEAKER_BACK_MIC;
                 } else if (outputDevices == AudioSystem::DEVICE_OUT_EARPIECE) {
