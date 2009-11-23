@@ -141,7 +141,7 @@ struct msm_mute_info {
 
 #define CODEC_TYPE_PCM 0
 #define PCM_FILL_BUFFER_COUNT 1
-#define AUDIO_HW_NUM_OUT_BUF 2  // Number of buffers in audio driver for output
+#define AUDIO_HW_NUM_OUT_BUF 4  // Number of buffers in audio driver for output
 // TODO: determine actual audio DSP and hardware latency
 #define AUDIO_HW_OUT_LATENCY_MS 0  // Additionnal latency introduced by audio DSP and hardware in ms
 
@@ -227,8 +227,8 @@ private:
                                 uint32_t *pChannels,
                                 uint32_t *pRate);
         virtual uint32_t    sampleRate() const { return 44100; }
-        // must be 32-bit aligned - driver only seems to like 4800
-        virtual size_t      bufferSize() const { return 4800; }
+        // must be 32-bit aligned
+        virtual size_t      bufferSize() const { return 3072; }
         virtual uint32_t    channels() const { return AudioSystem::CHANNEL_OUT_STEREO; }
         virtual int         format() const { return AudioSystem::PCM_16_BIT; }
         virtual uint32_t    latency() const { return (1000*AUDIO_HW_NUM_OUT_BUF*(bufferSize()/frameSize()))/sampleRate()+AUDIO_HW_OUT_LATENCY_MS; }
