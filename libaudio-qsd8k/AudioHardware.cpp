@@ -475,7 +475,7 @@ size_t AudioHardware::getInputBufferSize(uint32_t sampleRate, int format, int ch
         return 0;
     }
 
-    return 2048*channelCount;
+    return AUDIO_KERNEL_PCM_IN_BUFFERSIZE*channelCount;
 }
 
 static status_t set_volume_rpc(uint32_t volume)
@@ -1490,7 +1490,7 @@ String8 AudioHardware::AudioStreamOutMSM72xx::getParameters(const String8& keys)
 AudioHardware::AudioStreamInMSM72xx::AudioStreamInMSM72xx() :
     mHardware(0), mFd(-1), mState(AUDIO_INPUT_CLOSED), mRetryCount(0),
     mFormat(AUDIO_HW_IN_FORMAT), mChannels(AUDIO_HW_IN_CHANNELS),
-    mSampleRate(AUDIO_HW_IN_SAMPLERATE), mBufferSize(AUDIO_HW_IN_BUFFERSIZE),
+    mSampleRate(AUDIO_HW_IN_SAMPLERATE), mBufferSize(AUDIO_KERNEL_PCM_IN_BUFFERSIZE),
     mAcoustics((AudioSystem::audio_in_acoustics)0), mDevices(0)
 {
 }
