@@ -102,6 +102,9 @@ namespace android {
 
 #define KEY_A1026_VR_MODE "vr_mode"
 
+#define MOD_PLAY 1
+#define MOD_REC  2
+
 struct msm_bt_endpoint {
     int tx;
     int rx;
@@ -215,6 +218,7 @@ private:
     status_t    doAudience_A1026_Control(int Mode, bool Record, uint32_t Routes);
     status_t    doRouting(AudioStreamInMSM72xx *input);
     status_t    updateACDB();
+    uint32_t    getACDB(int mode, int device);
     status_t    updateBT();
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
