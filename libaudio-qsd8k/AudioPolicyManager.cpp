@@ -1102,6 +1102,9 @@ status_t AudioPolicyManager::setStreamVolumeIndex(AudioSystem::stream_type strea
         return BAD_VALUE;
     }
 
+    // Force max volume if stream cannot be muted
+    if (!mStreams[stream].mCanBeMuted) index = mStreams[stream].mIndexMax;
+
     LOGV("setStreamVolumeIndex() stream %d, index %d", stream, index);
     mStreams[stream].mIndexCur = index;
 
@@ -1538,9 +1541,6 @@ float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t
     float volume = 1.0;
     AudioOutputDescriptor *outputDesc = mOutputs.valueFor(output);
     StreamDescriptor &streamDesc = mStreams[stream];
-
-    // Force max volume if stream cannot be muted
-    if (!streamDesc.mCanBeMuted) index = streamDesc.mIndexMax;
 
     if (device == 0) {
         device = outputDesc->device();
