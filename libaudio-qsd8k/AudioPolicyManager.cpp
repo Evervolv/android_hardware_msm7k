@@ -1181,7 +1181,7 @@ status_t AudioPolicyManager::dump(int fd)
 
     snprintf(buffer, SIZE, "\nStreams dump:\n");
     write(fd, buffer, strlen(buffer));
-    snprintf(buffer, SIZE, " Stream  Index Min  Index Max  Index Cur  Mute Count  Can be muted\n");
+    snprintf(buffer, SIZE, " Stream  Index Min  Index Max  Index Cur  Can be muted\n");
     write(fd, buffer, strlen(buffer));
     for (size_t i = 0; i < AudioSystem::NUM_STREAM_TYPES; i++) {
         snprintf(buffer, SIZE, " %02d", i);
@@ -1580,8 +1580,8 @@ status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_h
 {
 
     // do not change actual stream volume if the stream is muted
-    if (mStreams[stream].mMuteCount != 0) {
-        LOGV("checkAndSetVolume() stream %d muted count %d", stream, mStreams[stream].mMuteCount);
+    if (mOutputs.valueFor(output)->mMuteCount[stream] != 0) {
+        LOGV("checkAndSetVolume() stream %d muted count %d", stream, mOutputs.valueFor(output)->mMuteCount[stream]);
         return NO_ERROR;
     }
 
@@ -1654,25 +1654,25 @@ void AudioPolicyManager::setStrategyMute(routing_strategy strategy, bool on, aud
 void AudioPolicyManager::setStreamMute(int stream, bool on, audio_io_handle_t output, int delayMs)
 {
     StreamDescriptor &streamDesc = mStreams[stream];
-    uint32_t device = mOutputs.valueFor(output)->mDevice;
+    AudioOutputDescriptor *outputDesc = mOutputs.valueFor(output);
 
-    LOGV("setStreamMute() stream %d, mute %d, output %d, mMuteCount %d", stream, on, output, streamDesc.mMuteCount);
+    LOGV("setStreamMute() stream %d, mute %d, output %d, mMuteCount %d", stream, on, output, outputDesc->mMuteCount[stream]);
 
     if (on) {
-        if (streamDesc.mMuteCount == 0) {
+        if (outputDesc->mMuteCount[stream] == 0) {
             if (streamDesc.mCanBeMuted) {
-                checkAndSetVolume(stream, 0, output, device, delayMs);
+                checkAndSetVolume(stream, 0, output, outputDesc->device(), delayMs);
             }
         }
         // increment mMuteCount after calling checkAndSetVolume() so that volume change is not ignored
-        streamDesc.mMuteCount++;
+        outputDesc->mMuteCount[stream]++;
     } else {
-        if (streamDesc.mMuteCount == 0) {
+        if (outputDesc->mMuteCount[stream] == 0) {
             LOGW("setStreamMute() unmuting non muted stream!");
             return;
         }
-        if (--streamDesc.mMuteCount == 0) {
-            checkAndSetVolume(stream, streamDesc.mIndexCur, output, device, delayMs);
+        if (--outputDesc->mMuteCount[stream] == 0) {
+            checkAndSetVolume(stream, streamDesc.mIndexCur, output, outputDesc->device(), delayMs);
         }
     }
 }
@@ -1729,6 +1729,7 @@ AudioPolicyManager::AudioOutputDescriptor::AudioOutputDescriptor()
     for (int i = 0; i < AudioSystem::NUM_STREAM_TYPES; i++) {
         mRefCount[i] = 0;
         mCurVolume[i] = -1.0;
+        mMuteCount[i] = 0;
     }
 }
 
@@ -1788,10 +1789,10 @@ status_t AudioPolicyManager::AudioOutputDescriptor::dump(int fd)
     result.append(buffer);
     snprintf(buffer, SIZE, " Devices %08x\n", mDevice);
     result.append(buffer);
-    snprintf(buffer, SIZE, " Stream volume refCount\n");
+    snprintf(buffer, SIZE, " Stream volume    refCount muteCount\n");
     result.append(buffer);
     for (int i = 0; i < AudioSystem::NUM_STREAM_TYPES; i++) {
-        snprintf(buffer, SIZE, " %02d     %.03f  %d\n", i, mCurVolume[i], mRefCount[i]);
+        snprintf(buffer, SIZE, " %02d     %.03f     %02d       %02d\n", i, mCurVolume[i], mRefCount[i], mMuteCount[i]);
         result.append(buffer);
     }
     write(fd, result.string(), result.size());
@@ -1834,11 +1835,10 @@ status_t AudioPolicyManager::AudioInputDescriptor::dump(int fd)
 
 void AudioPolicyManager::StreamDescriptor::dump(char* buffer, size_t size)
 {
-    snprintf(buffer, size, "      %02d         %02d         %02d         %02d          %d\n",
+    snprintf(buffer, size, "      %02d         %02d         %02d         %d\n",
             mIndexMin,
             mIndexMax,
             mIndexCur,
-            mMuteCount,
             mCanBeMuted);
 }
 
