@@ -751,12 +751,15 @@ audio_io_handle_t AudioPolicyManager::getOutput(AudioSystem::stream_type stream,
                                         outputDesc->mFlags);
 
         // only accept an output with the requeted parameters
-        if ((samplingRate != 0 && samplingRate != outputDesc->mSamplingRate) ||
+        if (output == 0 ||
+            (samplingRate != 0 && samplingRate != outputDesc->mSamplingRate) ||
             (format != 0 && format != outputDesc->mFormat) ||
             (channels != 0 && channels != outputDesc->mChannels)) {
             LOGV("getOutput() failed opening direct output: samplingRate %d, format %d, channels %d",
                     samplingRate, format, channels);
-            mpClientInterface->closeOutput(output);
+            if (output != 0) {
+                mpClientInterface->closeOutput(output);
+            }
             delete outputDesc;
             return 0;
         }
@@ -1000,12 +1003,15 @@ audio_io_handle_t AudioPolicyManager::getInput(int inputSource,
                                     inputDesc->mAcoustics);
 
     // only accept input with the exact requested set of parameters
-    if ((samplingRate != inputDesc->mSamplingRate) ||
+    if (input == 0 ||
+        (samplingRate != inputDesc->mSamplingRate) ||
         (format != inputDesc->mFormat) ||
         (channels != inputDesc->mChannels)) {
-        LOGV("getOutput() failed opening input: samplingRate %d, format %d, channels %d",
+        LOGV("getInput() failed opening input: samplingRate %d, format %d, channels %d",
                 samplingRate, format, channels);
-        mpClientInterface->closeInput(input);
+        if (input != 0) {
+            mpClientInterface->closeInput(input);
+        }
         delete inputDesc;
         return 0;
     }
@@ -1036,7 +1042,7 @@ status_t AudioPolicyManager::startInput(audio_io_handle_t input)
     // use Voice Recognition mode or not for this input based on input source
     int vr_enabled = inputDesc->mInputSource == AUDIO_SOURCE_VOICE_RECOGNITION ? 1 : 0;
     param.addInt(String8("vr_mode"), vr_enabled);
-    LOGV("AudioPolicyManager::getInput(%d), setting vr_mode to %d", inputDesc->mInputSource, vr_enabled);
+    LOGV("AudioPolicyManager::startInput(%d), setting vr_mode to %d", inputDesc->mInputSource, vr_enabled);
 
     mpClientInterface->setParameters(input, param.toString());
 
@@ -1518,11 +1524,11 @@ uint32_t AudioPolicyManager::getDeviceForInputSource(int inputSource)
         device = AudioSystem::DEVICE_IN_VOICE_CALL;
         break;
     default:
-        LOGW("getInput() invalid input source %d", inputSource);
+        LOGW("getDeviceForInputSource() invalid input source %d", inputSource);
         device = 0;
         break;
     }
-    LOGW("getDeviceForInputSource()input source %d, device %08x", inputSource, device);
+    LOGV("getDeviceForInputSource()input source %d, device %08x", inputSource, device);
     return device;
 }
 
