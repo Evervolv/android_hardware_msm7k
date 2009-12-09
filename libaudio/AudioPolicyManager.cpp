@@ -669,6 +669,13 @@ void AudioPolicyManager::setForceUse(AudioSystem::force_use usage, AudioSystem::
         }
         mForceUse[usage] = config;
         break;
+    case AudioSystem::FOR_DOCK:
+        if (config != AudioSystem::FORCE_NONE && config != AudioSystem::FORCE_BT_DOCK &&
+            config != AudioSystem::FORCE_WIRED_ACCESSORY) {
+            LOGW("setForceUse() invalid config %d for FOR_DOCK", config);
+        }
+        mForceUse[usage] = config;
+        break;
     default:
         LOGW("setForceUse() invalid usage %d", usage);
         break;
@@ -1133,6 +1140,8 @@ status_t AudioPolicyManager::dump(int fd)
     snprintf(buffer, SIZE, " Force use for media %d\n", mForceUse[AudioSystem::FOR_MEDIA]);
     result.append(buffer);
     snprintf(buffer, SIZE, " Force use for record %d\n", mForceUse[AudioSystem::FOR_RECORD]);
+    result.append(buffer);
+    snprintf(buffer, SIZE, " Force use for dock %d\n", mForceUse[AudioSystem::FOR_DOCK]);
     result.append(buffer);
     write(fd, result.string(), result.size());
 
