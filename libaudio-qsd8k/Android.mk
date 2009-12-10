@@ -13,6 +13,8 @@ LOCAL_SHARED_LIBRARIES := \
     libutils \
     libmedia
 
+LOCAL_STATIC_LIBRARIES := libaudiopolicybase
+
 LOCAL_MODULE:= libaudiopolicy
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
