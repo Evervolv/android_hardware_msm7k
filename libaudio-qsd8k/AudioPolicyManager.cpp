@@ -27,7 +27,6 @@ namespace android {
 // AudioPolicyInterface implementation
 // ----------------------------------------------------------------------------
 
-
 status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices device,
                                                   AudioSystem::device_connection_state state,
                                                   const char *device_address)
@@ -56,7 +55,7 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
         switch (state)
         {
         // handle output device connection
-        case AudioSystem::DEVICE_STATE_AVAILABLE:
+        case AudioSystem::DEVICE_STATE_AVAILABLE: {
             if (mAvailableOutputDevices & device) {
                 LOGW("setDeviceConnectionState() device already connected: %x", device);
                 return INVALID_OPERATION;
@@ -64,6 +63,16 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
             LOGW_IF((getOutputForDevice((uint32_t)device) != 0), "setDeviceConnectionState(): output using unconnected device %x", device);
 
             LOGV("setDeviceConnectionState() connecting device %x", device);
+
+            bool a2dpUsedForMedia = mA2dpOutput != 0 &&
+                                    AudioSystem::isA2dpDevice((AudioSystem::audio_devices)getDeviceForStrategy(STRATEGY_MEDIA));
+            bool a2dpUsedForPhone = mA2dpOutput != 0 &&
+                                    AudioSystem::isA2dpDevice((AudioSystem::audio_devices)getDeviceForStrategy(STRATEGY_PHONE));
+            bool a2dpUsedForDtmf = mA2dpOutput != 0 &&
+                                    AudioSystem::isA2dpDevice((AudioSystem::audio_devices)getDeviceForStrategy(STRATEGY_DTMF));
+            // note that the following excludes the case where STRATEGY_SONIFICATION is duplicated over A2DP + HW outputs
+            bool a2dpUsedForSonification = mA2dpOutput != 0 &&
+                                    AudioSystem::isA2dpDevice((AudioSystem::audio_devices)getDeviceForStrategy(STRATEGY_SONIFICATION));
 
             // register new device as available
             mAvailableOutputDevices |= device;
@@ -140,7 +149,6 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                             hwOutputDesc->mRefCount[i] = 0;
                         }
                     }
-
                 }
                 // move streams pertaining to STRATEGY_DTMF to the newly opened A2DP output
                 if (getDeviceForStrategy(STRATEGY_DTMF) & device) {
@@ -153,15 +161,22 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     }
 
                 }
-                // move streams pertaining to STRATEGY_SONIFICATION to the newly opened duplicated output
-                if (getDeviceForStrategy(STRATEGY_SONIFICATION) & device) {
+                // move streams pertaining to STRATEGY_SONIFICATION to the newly opened duplicated output or A2DP
+                // output according to device selection by getDeviceForStrategy()
+                if (getDeviceForStrategy(STRATEGY_SONIFICATION) == device) {
+                    for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                        if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
+                            mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
+                            outputDesc->mRefCount[i] = hwOutputDesc->mRefCount[i];
+                            hwOutputDesc->mRefCount[i] = 0;
+                        }
+                    }
+                } else if (getDeviceForStrategy(STRATEGY_SONIFICATION) & device) {
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                         if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
                             mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mDuplicatedOutput);
-                            outputDesc->mRefCount[i] =
-                                hwOutputDesc->mRefCount[i];
-                            mOutputs.valueFor(mDuplicatedOutput)->mRefCount[i] =
-                                hwOutputDesc->mRefCount[i];
+                            outputDesc->mRefCount[i] = hwOutputDesc->mRefCount[i];
+                            mOutputs.valueFor(mDuplicatedOutput)->mRefCount[i] = hwOutputDesc->mRefCount[i];
                         }
                     }
                 }
@@ -200,26 +215,80 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     //      use device for strategy media
                     // 4: the strategy DTMF is active on the hardware output:
                     //      use device for strategy DTMF
+                    AudioOutputDescriptor *hwOutputDesc = mOutputs.valueFor(mHardwareOutput);
+
                     if (getDeviceForStrategy(STRATEGY_PHONE) == device &&
                         (mPhoneState == AudioSystem::MODE_IN_CALL ||
-                        mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_PHONE))) {
+                        hwOutputDesc->isUsedByStrategy(STRATEGY_PHONE) ||
+                        (a2dpUsedForPhone && mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_PHONE)))) {
                         newDevice = device;
                     } else if ((getDeviceForStrategy(STRATEGY_SONIFICATION) & device) &&
-                               mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_SONIFICATION)){
+                                (hwOutputDesc->isUsedByStrategy(STRATEGY_SONIFICATION) ||
+                                 (a2dpUsedForSonification && mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_MEDIA)))) {
                         newDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
-                    } else if ((getDeviceForStrategy(STRATEGY_MEDIA) == device) &&
-                               mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)){
+                    } else if (getDeviceForStrategy(STRATEGY_MEDIA) == device &&
+                               (hwOutputDesc->isUsedByStrategy(STRATEGY_MEDIA) ||
+                                (a2dpUsedForMedia && mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_MEDIA)))) {
                         newDevice = device;
                     } else if (getDeviceForStrategy(STRATEGY_DTMF) == device &&
-                            mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
+                               (hwOutputDesc->isUsedByStrategy(STRATEGY_DTMF) ||
+                                (a2dpUsedForDtmf && mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_DTMF)))) {
                          newDevice = device;
+                    }
+                    if (a2dpUsedForPhone && getDeviceForStrategy(STRATEGY_PHONE) == device) {
+                        // a2dpUsedForPhone == true => mA2dpOutput != 0
+                        AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
+                        for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                            if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_PHONE) {
+                                mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                                hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                        a2dpOutputDesc->mRefCount[i]);
+                                a2dpOutputDesc->mRefCount[i] = 0;
+                            }
+                        }
+                    }
+                    if (a2dpUsedForSonification && getDeviceForStrategy(STRATEGY_SONIFICATION) == device) {
+                        // a2dpUsedForSonification == true => mA2dpOutput != 0
+                        AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
+                        for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                            if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
+                                mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                                hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                        a2dpOutputDesc->mRefCount[i]);
+                                a2dpOutputDesc->mRefCount[i] = 0;
+                            }
+                        }
+                    }
+                    if (a2dpUsedForMedia && getDeviceForStrategy(STRATEGY_MEDIA) == device) {
+                        // a2dpUsedForMedia == true => mA2dpOutput != 0
+                        AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
+                        for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                            if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_MEDIA) {
+                                mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                                hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                        a2dpOutputDesc->mRefCount[i]);
+                                a2dpOutputDesc->mRefCount[i] = 0;
+                            }
+                        }
+                    }
+                    if (a2dpUsedForDtmf && getDeviceForStrategy(STRATEGY_DTMF) == device) {
+                        // a2dpUsedForDtmf == true => mA2dpOutput != 0
+                        AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
+                        for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                            if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
+                                mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                                hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                        a2dpOutputDesc->mRefCount[i]);
+                                a2dpOutputDesc->mRefCount[i] = 0;
+                            }
+                        }
                     }
                 }
 
                 // request routing change if necessary
                 setOutputDevice(mHardwareOutput, newDevice);
             }
-            break;
+            } break;
         // handle output device disconnection
         case AudioSystem::DEVICE_STATE_UNAVAILABLE: {
             if (!(mAvailableOutputDevices & device)) {
@@ -231,10 +300,10 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
             // get usage of disconnected device by all strategies
             bool wasUsedForMedia = (getDeviceForStrategy(STRATEGY_MEDIA) & device) != 0;
             bool wasUsedForSonification = (getDeviceForStrategy(STRATEGY_SONIFICATION) & device) != 0;
-            bool wasUsedforPhone = (getDeviceForStrategy(STRATEGY_PHONE) & device) != 0;
-            bool wasUsedforDtmf = (getDeviceForStrategy(STRATEGY_DTMF) & device) != 0;
+            bool wasUsedForPhone = (getDeviceForStrategy(STRATEGY_PHONE) & device) != 0;
+            bool wasUsedForDtmf = (getDeviceForStrategy(STRATEGY_DTMF) & device) != 0;
             LOGV("setDeviceConnectionState() disconnecting device %x used by media %d, sonification %d, phone %d",
-                    device, wasUsedForMedia, wasUsedForSonification, wasUsedforPhone);
+                    device, wasUsedForMedia, wasUsedForSonification, wasUsedForPhone);
             // remove device from available output devices
             mAvailableOutputDevices &= ~device;
 
@@ -263,7 +332,7 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
 
                 // If the A2DP device was used by DTMF strategy, move all streams pertaining to DTMF strategy to
                 // hardware output
-                if (wasUsedforDtmf) {
+                if (wasUsedForDtmf) {
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                         if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
                             mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
@@ -299,6 +368,11 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
                         if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
                             mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                            // if stream is playing over duplicated output, do not change the ref count on hw output
+                            if (mOutputs.valueFor(mDuplicatedOutput)->mRefCount[i] == 0) {
+                                hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                                                    a2dpOutputDesc->mRefCount[i]);
+                            }
                         }
                     }
                     if (a2dpOutputDesc->isUsedByStrategy(STRATEGY_SONIFICATION)) {
@@ -325,11 +399,11 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
             {
                 if (AudioSystem::isBluetoothScoDevice(device)) {
                     // handle SCO device disconnection
-                    if (wasUsedforPhone &&
+                    if (wasUsedForPhone &&
                         mPhoneState == AudioSystem::MODE_IN_CALL) {
                         // if in call, find new suitable device for phone strategy
                         newDevice = getDeviceForStrategy(STRATEGY_PHONE);
-                    } else if (wasUsedforDtmf &&
+                    } else if (wasUsedForDtmf &&
                                mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
                         newDevice = getDeviceForStrategy(STRATEGY_DTMF);
                     }
@@ -349,19 +423,72 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     //      use device for strategy media
                     // 4: the strategy DTMF is active on the hardware output:
                     //      use device for strategy DTMF
-                    if (wasUsedforPhone &&
-                        (mPhoneState == AudioSystem::MODE_IN_CALL ||
-                         mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_PHONE))) {
-                        newDevice = getDeviceForStrategy(STRATEGY_PHONE);
+                    AudioOutputDescriptor *hwOutputDesc = mOutputs.valueFor(mHardwareOutput);
+                    if (wasUsedForPhone) {
+                        if ((mPhoneState == AudioSystem::MODE_IN_CALL ||
+                            hwOutputDesc->isUsedByStrategy(STRATEGY_PHONE))) {
+                            newDevice = getDeviceForStrategy(STRATEGY_PHONE);
+                        }
                     } else if (wasUsedForSonification &&
-                               mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_SONIFICATION)){
+                               hwOutputDesc->isUsedByStrategy(STRATEGY_SONIFICATION)) {
                         newDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
-                    } else if (wasUsedForMedia &&
-                               mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_MEDIA)){
-                        newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
-                    } else if (wasUsedforDtmf &&
-                               mOutputs.valueFor(mHardwareOutput)->isUsedByStrategy(STRATEGY_DTMF)){
-                        newDevice = getDeviceForStrategy(STRATEGY_DTMF);
+                    } else if (wasUsedForMedia) {
+                        if (hwOutputDesc->isUsedByStrategy(STRATEGY_MEDIA)) {
+                            newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
+                        }
+                    } else if (wasUsedForDtmf) {
+                        if (hwOutputDesc->isUsedByStrategy(STRATEGY_DTMF)) {
+                            newDevice = getDeviceForStrategy(STRATEGY_DTMF);
+                        }
+                    }
+                    if (wasUsedForPhone && mA2dpOutput != 0 &&
+                        AudioSystem::isA2dpDevice((AudioSystem::audio_devices)getDeviceForStrategy(STRATEGY_PHONE))) {
+                        AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
+                        for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                            if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_PHONE) {
+                                mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
+                                a2dpOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                        hwOutputDesc->mRefCount[i]);
+                                hwOutputDesc->mRefCount[i] = 0;
+                            }
+                        }
+                    }
+                    if (wasUsedForSonification && mA2dpOutput != 0 &&
+                        AudioSystem::isA2dpDevice((AudioSystem::audio_devices)getDeviceForStrategy(STRATEGY_SONIFICATION))) {
+                        AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
+                        for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                            if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
+                                mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
+                                a2dpOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                        hwOutputDesc->mRefCount[i]);
+                                hwOutputDesc->mRefCount[i] = 0;
+                            }
+                        }
+                    }
+
+                    if (wasUsedForMedia && mA2dpOutput != 0 &&
+                        AudioSystem::isA2dpDevice((AudioSystem::audio_devices)getDeviceForStrategy(STRATEGY_MEDIA))) {
+                        AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
+                        for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                            if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_MEDIA) {
+                                mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
+                                a2dpOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                        hwOutputDesc->mRefCount[i]);
+                                hwOutputDesc->mRefCount[i] = 0;
+                            }
+                        }
+                    }
+                    if (wasUsedForDtmf &&
+                        mA2dpOutput != 0 && AudioSystem::isA2dpDevice((AudioSystem::audio_devices)getDeviceForStrategy(STRATEGY_DTMF))) {
+                        AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
+                        for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                            if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
+                                mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
+                                a2dpOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                        hwOutputDesc->mRefCount[i]);
+                                hwOutputDesc->mRefCount[i] = 0;
+                            }
+                        }
                     }
                 }
             }
@@ -498,7 +625,7 @@ void AudioPolicyManager::setPhoneState(int state)
     // store previous phone state for management of sonification strategy below
     int oldState = mPhoneState;
     uint32_t oldDtmfDevice = getDeviceForStrategy(STRATEGY_DTMF);
-    uint32_t oldSonificationDevice = getDeviceForStrategy(STRATEGY_SONIFICATION) & ~AudioSystem::DEVICE_OUT_SPEAKER;
+    uint32_t oldSonificationDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
     mPhoneState = state;
     bool force = false;
     AudioOutputDescriptor *hwOutputDesc = mOutputs.valueFor(mHardwareOutput);
@@ -532,61 +659,72 @@ void AudioPolicyManager::setPhoneState(int state)
     }
 
     if (mA2dpOutput != 0) {
-        // If entering or exiting in call state, switch DTMF streams to/from A2DP output
-        // if necessary
         uint32_t newDtmfDevice = getDeviceForStrategy(STRATEGY_DTMF);
-        uint32_t newSonificationDevice = getDeviceForStrategy(STRATEGY_SONIFICATION) & ~AudioSystem::DEVICE_OUT_SPEAKER;
-        if (state == AudioSystem::MODE_IN_CALL) {  // entering in call mode
-            // move DTMF streams from A2DP output to hardware output if necessary
-            if (AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
-                !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
-                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
-                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
-                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+        uint32_t newSonificationDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
+
+        // move DTMF streams from/to A2DP output to/from hardware output if necessary
+        if (AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
+            !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
+            for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
+                    mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                    int refCount = mOutputs.valueFor(mA2dpOutput)->mRefCount[i];
+                    hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                            refCount);
+                    mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i,-refCount);
+                }
+            }
+            if (newDevice == 0 && mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
+                newDevice = newDtmfDevice;
+            }
+        } else if (!AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
+            AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
+            for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
+                    mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
+                    int refCount = hwOutputDesc->mRefCount[i];
+                    mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
+                    hwOutputDesc->changeRefCount((AudioSystem::stream_type)i, -refCount);
+                }
+            }
+        }
+
+        // move SONIFICATION streams from/to duplicated or A2DP output to/from hardware output if necessary
+        if (AudioSystem::isA2dpDevice((AudioSystem::audio_devices)(oldSonificationDevice & ~AudioSystem::DEVICE_OUT_SPEAKER)) &&
+            !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)(newSonificationDevice & ~AudioSystem::DEVICE_OUT_SPEAKER))) {
+            for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
+                    mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                    if (AudioSystem::popCount((AudioSystem::audio_devices)oldSonificationDevice) == 2) {
+                        int refCount = mOutputs.valueFor(mDuplicatedOutput)->mRefCount[i];
+                        // ref count on HW output is first incremented and the decremented so it keeps the same value when
+                        // stream is moved from duplicated to HW output.
+                        hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
+                                refCount);
+                        mOutputs.valueFor(mDuplicatedOutput)->changeRefCount((AudioSystem::stream_type)i,-refCount);
+                    } else {
                         int refCount = mOutputs.valueFor(mA2dpOutput)->mRefCount[i];
                         hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
                                 refCount);
                         mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i,-refCount);
                     }
                 }
-                if (newDevice == 0 && mOutputs.valueFor(mA2dpOutput)->isUsedByStrategy(STRATEGY_DTMF)) {
-                    newDevice = newDtmfDevice;
-                }
             }
-            // move SONIFICATION streams from duplicated output to hardware output if necessary
-            if (AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldSonificationDevice) &&
-                !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newSonificationDevice)) {
-                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
-                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
-                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
-                        int refCount = mOutputs.valueFor(mDuplicatedOutput)->mRefCount[i];
-                        hwOutputDesc->changeRefCount((AudioSystem::stream_type)i,
-                                refCount);
-                        mOutputs.valueFor(mDuplicatedOutput)->changeRefCount((AudioSystem::stream_type)i,-refCount);
-                    }
-                }
-            }
-        } else { // exiting in call mode
-            // move DTMF streams from hardware output to A2DP output if necessary
-            if (!AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldDtmfDevice) &&
-                AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newDtmfDevice)) {
-                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
-                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_DTMF) {
+        } else if (!AudioSystem::isA2dpDevice((AudioSystem::audio_devices)(oldSonificationDevice & ~AudioSystem::DEVICE_OUT_SPEAKER)) &&
+                    AudioSystem::isA2dpDevice((AudioSystem::audio_devices)(newSonificationDevice & ~AudioSystem::DEVICE_OUT_SPEAKER))) {
+            for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
+                    if (AudioSystem::popCount((AudioSystem::audio_devices)newSonificationDevice) == 2) {
+                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mDuplicatedOutput);
+                        int refCount = hwOutputDesc->mRefCount[i];
+                        // ref count on HW output is first incremented and the decremented so it keeps the same value when
+                        // stream is moved from HW to duplicated output.
+                        mOutputs.valueFor(mDuplicatedOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
+                        hwOutputDesc->changeRefCount((AudioSystem::stream_type)i, -refCount);
+                    } else {
                         mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
                         int refCount = hwOutputDesc->mRefCount[i];
                         mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
-                        hwOutputDesc->changeRefCount((AudioSystem::stream_type)i, -refCount);
-                    }
-                }
-            }
-            // move SONIFICATION streams from hardware output to A2DP output if necessary
-            if (!AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldSonificationDevice) &&
-                AudioSystem::isA2dpDevice((AudioSystem::audio_devices)newSonificationDevice)) {
-                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
-                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_SONIFICATION) {
-                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mDuplicatedOutput);
-                        int refCount = hwOutputDesc->mRefCount[i];
-                        mOutputs.valueFor(mDuplicatedOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
                         hwOutputDesc->changeRefCount((AudioSystem::stream_type)i, -refCount);
                     }
                 }
@@ -657,23 +795,52 @@ void AudioPolicyManager::setForceUse(AudioSystem::force_use usage, AudioSystem::
     LOGV("setForceUse() usage %d, config %d, mPhoneState %d", usage, config, mPhoneState);
 
     switch(usage) {
-    case AudioSystem::FOR_COMMUNICATION:
+    case AudioSystem::FOR_COMMUNICATION: {
         if (config != AudioSystem::FORCE_SPEAKER && config != AudioSystem::FORCE_BT_SCO &&
             config != AudioSystem::FORCE_NONE) {
             LOGW("setForceUse() invalid config %d for FOR_COMMUNICATION", config);
             return;
         }
+        uint32_t oldPhoneDevice = getDeviceForStrategy(STRATEGY_PHONE);
         mForceUse[usage] = config;
+        uint32_t device = getDeviceForStrategy(STRATEGY_PHONE);
         // update hardware output routing immediately if in call, or if there is an active
         // VOICE_CALL stream, as would be the case with an application that uses this stream
         // for it to behave like in a telephony app (e.g. voicemail app that plays audio files
         // streamed or downloaded to the device)
         if ((mPhoneState == AudioSystem::MODE_IN_CALL) ||
-                (mOutputs.valueFor(mHardwareOutput)->isUsedByStream(AudioSystem::VOICE_CALL))) {
-            uint32_t device = getDeviceForStrategy(STRATEGY_PHONE);
+                (mOutputs.valueFor(mHardwareOutput)->isUsedByStream(AudioSystem::VOICE_CALL)) ||
+                (mPhoneState != AudioSystem::MODE_IN_CALL && mA2dpOutput != 0 &&
+                 mOutputs.valueFor(mA2dpOutput)->isUsedByStream(AudioSystem::VOICE_CALL))) {
             setOutputDevice(mHardwareOutput, device);
         }
-        break;
+
+        // move STRATEGY_PHONE to/from A2DP output from/to hardware output is necessary
+        if (mPhoneState != AudioSystem::MODE_IN_CALL && mA2dpOutput != 0) {
+            if (AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldPhoneDevice) &&
+                !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)device)) {
+                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_PHONE) {
+                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mHardwareOutput);
+                        int refCount = mOutputs.valueFor(mA2dpOutput)->mRefCount[i];
+                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
+                        mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i, -refCount);
+                    }
+                }
+            } else if (!AudioSystem::isA2dpDevice((AudioSystem::audio_devices)oldPhoneDevice) &&
+                       AudioSystem::isA2dpDevice((AudioSystem::audio_devices)device)) {
+                for (int i = 0; i < (int)AudioSystem::NUM_STREAM_TYPES; i++) {
+                    if (getStrategy((AudioSystem::stream_type)i) == STRATEGY_PHONE) {
+                        mpClientInterface->setStreamOutput((AudioSystem::stream_type)i, mA2dpOutput);
+                        int refCount = mOutputs.valueFor(mHardwareOutput)->mRefCount[i];
+                        mOutputs.valueFor(mA2dpOutput)->changeRefCount((AudioSystem::stream_type)i, refCount);
+                        mOutputs.valueFor(mHardwareOutput)->changeRefCount((AudioSystem::stream_type)i, -refCount);
+                    }
+                }
+            }
+        }
+
+        } break;
     case AudioSystem::FOR_MEDIA:
         if (config != AudioSystem::FORCE_HEADPHONES && config != AudioSystem::FORCE_BT_A2DP &&
             config != AudioSystem::FORCE_WIRED_ACCESSORY && config != AudioSystem::FORCE_NONE) {
@@ -687,6 +854,13 @@ void AudioPolicyManager::setForceUse(AudioSystem::force_use usage, AudioSystem::
             config != AudioSystem::FORCE_NONE) {
             LOGW("setForceUse() invalid config %d for FOR_RECORD", config);
             return;
+        }
+        mForceUse[usage] = config;
+        break;
+    case AudioSystem::FOR_DOCK:
+        if (config != AudioSystem::FORCE_NONE && config != AudioSystem::FORCE_BT_DOCK &&
+            config != AudioSystem::FORCE_WIRED_ACCESSORY) {
+            LOGW("setForceUse() invalid config %d for FOR_DOCK", config);
         }
         mForceUse[usage] = config;
         break;
@@ -1167,6 +1341,8 @@ status_t AudioPolicyManager::dump(int fd)
     result.append(buffer);
     snprintf(buffer, SIZE, " Force use for record %d\n", mForceUse[AudioSystem::FOR_RECORD]);
     result.append(buffer);
+    snprintf(buffer, SIZE, " Force use for dock %d\n", mForceUse[AudioSystem::FOR_DOCK]);
+    result.append(buffer);
     write(fd, result.string(), result.size());
 
     snprintf(buffer, SIZE, "\nOutputs dump:\n");
@@ -1338,6 +1514,7 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
                 device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT;
                 if (device) break;
             }
+            // otherwise (not docked) continue with selection
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET;
             if (device) break;
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO;
@@ -1350,6 +1527,12 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
             if (device) break;
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
             if (device) break;
+            // when not in call: if we are docked to a BT dock, give A2DP preference over earpiece.
+            if (mPhoneState != AudioSystem::MODE_IN_CALL &&
+                mForceUse[AudioSystem::FOR_DOCK] == AudioSystem::FORCE_BT_DOCK) {
+                device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP;
+                if (device) break;
+            }
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_EARPIECE;
             if (device == 0) {
                 LOGE("getDeviceForStrategy() earpiece device not found");
@@ -1359,6 +1542,12 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
         case AudioSystem::FORCE_SPEAKER:
             if (mPhoneState != AudioSystem::MODE_IN_CALL || strategy != STRATEGY_DTMF) {
                 device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT;
+                if (device) break;
+            }
+            // when not in call: if we are docked to a BT dock, give A2DP preference over phone spkr
+            if (mPhoneState != AudioSystem::MODE_IN_CALL &&
+                mForceUse[AudioSystem::FOR_DOCK] == AudioSystem::FORCE_BT_DOCK) {
+                device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP;
                 if (device) break;
             }
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
@@ -1377,29 +1566,50 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy)
             device = getDeviceForStrategy(STRATEGY_PHONE);
             break;
         }
-        device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
-        if (device == 0) {
-            LOGE("getDeviceForStrategy() speaker device not found");
+        // If not incall and phone is docked: don't duplicate for the sonification strategy
+        if (mForceUse[AudioSystem::FOR_DOCK] == AudioSystem::FORCE_NONE) {
+            device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
+            if (device == 0) {
+                LOGE("getDeviceForStrategy() speaker device not found");
+            }
+        } else {
+            device = 0;
         }
         // The second device used for sonification is the same as the device used by media strategy
+        // Note that when docked, we pick the device below (no duplication)
         // FALL THROUGH
 
     case STRATEGY_MEDIA: {
         uint32_t device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_AUX_DIGITAL;
         if (device2 == 0) {
-            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP;
-            if (device2 == 0) {
-                device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES;
+            // if docked to a BT dock, give priority to the wired accessories
+            if (mForceUse[AudioSystem::FOR_DOCK] == AudioSystem::FORCE_BT_DOCK) {
+                device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
                 if (device2 == 0) {
-                    device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER;
+                    device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
+                }
+                // play ringtone over speaker if in car dock because A2DP is suspended in this case
+                if (device2 == 0 && strategy == STRATEGY_SONIFICATION &&
+                    mA2dpOutput != 0 && mScoDeviceAddress == mA2dpDeviceAddress &&
+                    mPhoneState == AudioSystem::MODE_RINGTONE) {
+                    device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
+                }
+            }
+            if (device2 == 0) {
+                device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP;
+                if (device2 == 0) {
+                    device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES;
                     if (device2 == 0) {
-                        device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
+                        device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER;
                         if (device2 == 0) {
-                            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
+                            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
                             if (device2 == 0) {
-                                device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
-                                if (device == 0) {
-                                    LOGE("getDeviceForStrategy() speaker device not found");
+                                device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
+                                if (device2 == 0) {
+                                    device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
+                                    if (device == 0) {
+                                        LOGE("getDeviceForStrategy() speaker device not found");
+                                    }
                                 }
                             }
                         }
