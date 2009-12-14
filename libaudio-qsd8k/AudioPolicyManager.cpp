@@ -424,23 +424,20 @@ status_t AudioPolicyManager::setDeviceConnectionState(AudioSystem::audio_devices
                     // 4: the strategy DTMF is active on the hardware output:
                     //      use device for strategy DTMF
                     AudioOutputDescriptor *hwOutputDesc = mOutputs.valueFor(mHardwareOutput);
-                    if (wasUsedForPhone) {
-                        if ((mPhoneState == AudioSystem::MODE_IN_CALL ||
-                            hwOutputDesc->isUsedByStrategy(STRATEGY_PHONE))) {
-                            newDevice = getDeviceForStrategy(STRATEGY_PHONE);
-                        }
+                    if (wasUsedForPhone && (mPhoneState == AudioSystem::MODE_IN_CALL ||
+                        hwOutputDesc->isUsedByStrategy(STRATEGY_PHONE))) {
+                        newDevice = getDeviceForStrategy(STRATEGY_PHONE);
                     } else if (wasUsedForSonification &&
-                               hwOutputDesc->isUsedByStrategy(STRATEGY_SONIFICATION)) {
+                        hwOutputDesc->isUsedByStrategy(STRATEGY_SONIFICATION)) {
                         newDevice = getDeviceForStrategy(STRATEGY_SONIFICATION);
-                    } else if (wasUsedForMedia) {
-                        if (hwOutputDesc->isUsedByStrategy(STRATEGY_MEDIA)) {
-                            newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
-                        }
-                    } else if (wasUsedForDtmf) {
-                        if (hwOutputDesc->isUsedByStrategy(STRATEGY_DTMF)) {
-                            newDevice = getDeviceForStrategy(STRATEGY_DTMF);
-                        }
+                    } else if (wasUsedForMedia &&
+                        hwOutputDesc->isUsedByStrategy(STRATEGY_MEDIA)) {
+                        newDevice = getDeviceForStrategy(STRATEGY_MEDIA);
+                    } else if (wasUsedForDtmf &&
+                        hwOutputDesc->isUsedByStrategy(STRATEGY_DTMF)) {
+                        newDevice = getDeviceForStrategy(STRATEGY_DTMF);
                     }
+
                     if (wasUsedForPhone && mA2dpOutput != 0 &&
                         AudioSystem::isA2dpDevice((AudioSystem::audio_devices)getDeviceForStrategy(STRATEGY_PHONE))) {
                         AudioOutputDescriptor *a2dpOutputDesc = mOutputs.valueFor(mA2dpOutput);
