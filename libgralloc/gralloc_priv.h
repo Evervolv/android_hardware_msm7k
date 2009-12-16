@@ -54,11 +54,6 @@ struct private_module_t {
     float xdpi;
     float ydpi;
     float fps;
-    
-    enum {
-        // flag to indicate we'll post this buffer
-        PRIV_USAGE_LOCKED_FOR_POST = 0x80000000
-    };
 };
 
 /*****************************************************************************/
@@ -76,12 +71,6 @@ struct private_handle_t {
         PRIV_FLAGS_USES_GPU    = 0x00000004,
     };
 
-    enum {
-        LOCK_STATE_WRITE     =   1<<31,
-        LOCK_STATE_MAPPED    =   1<<30,
-        LOCK_STATE_READ_MASK =   0x3FFFFFFF
-    };
-
     // file-descriptors
     int     fd;
     // ints
@@ -93,19 +82,17 @@ struct private_handle_t {
 
     // FIXME: the attributes below should be out-of-line
     int     base;
-    int     lockState;
-    int     writeOwner;
     int     phys; // The physical address of that chunk of memory. If using ashmem, set to 0 They don't care
     int     pid;
 
 #ifdef __cplusplus
-    static const int sNumInts = 10;
+    static const int sNumInts = 8;
     static const int sNumFds = 1;
     static const int sMagic = 'gmsm';
 
     private_handle_t(int fd, int size, int flags) :
         fd(fd), magic(sMagic), flags(flags), size(size), offset(0),
-        base(0), lockState(0), writeOwner(0), pid(getpid())
+        base(0), pid(getpid())
     {
         version = sizeof(native_handle);
         numInts = sNumInts;
@@ -113,10 +100,6 @@ struct private_handle_t {
     }
     ~private_handle_t() {
         magic = 0;
-    }
-
-    bool usesPhysicallyContiguousMemory() {
-        return (flags & (PRIV_FLAGS_USES_PMEM|PRIV_FLAGS_USES_GPU)) != 0;
     }
 
     static int validate(const native_handle* h) {
@@ -129,13 +112,6 @@ struct private_handle_t {
             return -EINVAL;
         }
         return 0;
-    }
-
-    static private_handle_t* dynamicCast(const native_handle* in) {
-        if (validate(in) == 0) {
-            return (private_handle_t*) in;
-        }
-        return NULL;
     }
 #endif
 };

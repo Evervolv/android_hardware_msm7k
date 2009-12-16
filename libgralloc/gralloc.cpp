@@ -316,7 +316,6 @@ static int gralloc_alloc_buffer(alloc_device_t* dev,
     int gpu_fd = -1;
     void* base = 0;
     int offset = 0;
-    int lockState = 0;
 
     size = roundUpToPageSize(size);
     
@@ -345,8 +344,6 @@ try_ashmem:
         if (err == 0) {
             // PMEM buffers are always mmapped
             base = m->pmem_master_base;
-            lockState |= private_handle_t::LOCK_STATE_MAPPED;
-
             offset = sAllocator.allocate(size);
             if (offset < 0) {
                 // no more pmem memory
@@ -397,7 +394,6 @@ try_ashmem:
         if (err == 0) {
             // GPU buffers are always mmapped
             base = m->gpu_base;
-            lockState |= private_handle_t::LOCK_STATE_MAPPED;
             offset = sAllocatorGPU.allocate(size);
             if (offset < 0) {
                 // no more pmem memory
@@ -418,11 +414,19 @@ try_ashmem:
 
     if (err == 0) {
         private_handle_t* hnd = new private_handle_t(fd, size, flags);
-        hnd->offset = offset;
-        hnd->base = int(base)+offset;
-        hnd->lockState = lockState;
-        hnd->gpu_fd = gpu_fd;
-        *pHandle = hnd;
+        if (base == NULL) {
+            gralloc_module_t* module = reinterpret_cast<gralloc_module_t*>(
+                    dev->common.module);
+            err = mapBuffer(module, hnd);
+            if (err == 0) {
+                *pHandle = hnd;
+            }
+        } else {
+            hnd->offset = offset;
+            hnd->base = int(base)+offset;
+            hnd->gpu_fd = gpu_fd;
+            *pHandle = hnd;
+        }
     }
     
     LOGE_IF(err, "gralloc failed err=%s", strerror(-err));
