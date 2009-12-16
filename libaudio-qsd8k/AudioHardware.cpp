@@ -75,7 +75,10 @@ static int stream_volume = -300;
 static int vr_mode_enabled;
 static bool vr_mode_change = false;
 static int vr_uses_ns = 0;
+// enable or disable 2-mic noise suppression in call on receiver mode
 static int enable1026 = 1;
+//FIXME add new settings in A1026 driver for an incall no ns mode, based on the current vr no ns
+#define A1026_PATH_INCALL_NO_NS_RECEIVER A1026_PATH_VR_NO_NS_RECEIVER
 
 int errCount = 0;
 static void * acoustic;
@@ -897,14 +900,19 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	            //TODO: what do we do for camcorder when in call?
 	        case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
 	        case SND_DEVICE_HANDSET_BACK_MIC:
+	            if (enable1026) {
                     new_pathid = A1026_PATH_INCALL_RECEIVER;
                     LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
-                    break;
-                case SND_DEVICE_HEADSET:
-                case SND_DEVICE_HEADSET_AND_SPEAKER:
-                case SND_DEVICE_FM_HEADSET:
-                case SND_DEVICE_FM_SPEAKER:
-                case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
+	            } else {
+	                new_pathid = A1026_PATH_INCALL_NO_NS_RECEIVER;
+	                LOGV("A1026 control: new path is A1026_PATH_INCALL_NO_NS_RECEIVER");
+	            }
+	            break;
+	        case SND_DEVICE_HEADSET:
+	        case SND_DEVICE_HEADSET_AND_SPEAKER:
+	        case SND_DEVICE_FM_HEADSET:
+	        case SND_DEVICE_FM_SPEAKER:
+	        case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
 	            new_pathid = A1026_PATH_INCALL_HEADSET;
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
@@ -926,13 +934,18 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
            switch (Routes) {
 	        case SND_DEVICE_HANDSET:
 	        case SND_DEVICE_NO_MIC_HEADSET:
-                    new_pathid = A1026_PATH_INCALL_RECEIVER; /* NS CT mode, Dual MIC */
+	            if (enable1026) {
+	                new_pathid = A1026_PATH_INCALL_RECEIVER; /* NS CT mode, Dual MIC */
                     LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
-                    break;
-                case SND_DEVICE_HEADSET:
-                case SND_DEVICE_HEADSET_AND_SPEAKER:
-                case SND_DEVICE_FM_HEADSET:
-                case SND_DEVICE_FM_SPEAKER:
+	            } else {
+	                new_pathid = A1026_PATH_INCALL_NO_NS_RECEIVER;
+	                LOGV("A1026 control: new path is A1026_PATH_INCALL_NO_NS_RECEIVER");
+	            }
+	            break;
+	        case SND_DEVICE_HEADSET:
+	        case SND_DEVICE_HEADSET_AND_SPEAKER:
+	        case SND_DEVICE_FM_HEADSET:
+	        case SND_DEVICE_FM_SPEAKER:
 	            new_pathid = A1026_PATH_INCALL_HEADSET; /* NS disable, Headset MIC */
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
@@ -964,7 +977,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_RECEIVER");
 	            }
 	        } else {
-                new_pathid = A1026_PATH_RECORD_RECEIVER; /* INT-MIC Recording: NS disable, Main MIC */
+	            new_pathid = A1026_PATH_RECORD_RECEIVER; /* INT-MIC Recording: NS disable, Main MIC */
                 LOGV("A1026 control: new path is A1026_PATH_RECORD_RECEIVER");
 	        }
 	        break;
@@ -1642,11 +1655,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
     if (param.getInt(key, enabled) == NO_ERROR) {
         LOGV("set vr_mode_enabled to %d", enabled);
         vr_mode_change = (vr_mode_enabled != enabled);
-        if (enable1026) {
-            vr_mode_enabled = enabled;
-        } else {
-            vr_mode_enabled = 0;
-        }
+        vr_mode_enabled = enabled;
         param.remove(key);
     }
 
