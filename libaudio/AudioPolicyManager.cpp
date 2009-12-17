@@ -670,8 +670,8 @@ void AudioPolicyManager::setForceUse(AudioSystem::force_use usage, AudioSystem::
         mForceUse[usage] = config;
         break;
     case AudioSystem::FOR_DOCK:
-        if (config != AudioSystem::FORCE_NONE && config != AudioSystem::FORCE_BT_DOCK &&
-            config != AudioSystem::FORCE_WIRED_ACCESSORY) {
+        if (config != AudioSystem::FORCE_NONE && config != AudioSystem::FORCE_BT_CAR_DOCK &&
+            config != AudioSystem::FORCE_BT_DESK_DOCK && config != AudioSystem::FORCE_WIRED_ACCESSORY) {
             LOGW("setForceUse() invalid config %d for FOR_DOCK", config);
         }
         mForceUse[usage] = config;
