@@ -797,18 +797,6 @@ void AudioPolicyManager::setPhoneState(int state)
     }
     // change routing is necessary
     setOutputDevice(mHardwareOutput, newDevice, force);
-    // reset stream volumes that depend on phone state when entering or exiting call
-    // (force is true only in those two cases).
-    if (force) {
-        // VOICE_CALL volume must be reset whenever entering or exiting a call as on QSD8K, the
-        // voice volume also controls the master volume (the implementation of checkAndSetVolume()
-        // for VOICE_CALL is dependent on the phone state)
-        checkAndSetVolume(AudioSystem::VOICE_CALL, mStreams[AudioSystem::VOICE_CALL].mIndexCur, mHardwareOutput, 0, 0, true);
-        checkAndSetVolume(AudioSystem::DTMF, mStreams[AudioSystem::DTMF].mIndexCur, mHardwareOutput, 0, 0, true);
-        if (mA2dpOutput != 0) {
-            checkAndSetVolume(AudioSystem::DTMF, mStreams[AudioSystem::DTMF].mIndexCur, mA2dpOutput, 0, 0, true);
-        }
-    }
 
     // if entering in call state, handle special case of active streams
     // pertaining to sonification strategy see handleIncallSonification()
@@ -2054,17 +2042,6 @@ status_t AudioPolicyManager::checkAndSetVolume(int stream, int index, audio_io_h
             volume = 0.01 + 0.99 * volume;
             if (stream == AudioSystem::VOICE_CALL) {
                 voiceVolume = (float)index/(float)mStreams[stream].mIndexMax;
-                if (mPhoneState == AudioSystem::MODE_IN_CALL) {
-                    volume = 1.0;
-                } else {
-                    // when not in call, apply no attenuation on the voice volume because it affects
-                    // all other streams on QSD8K.
-                    voiceVolume = 1.0;
-                }
-            } else if (stream == AudioSystem::DTMF &&
-                       mPhoneState == AudioSystem::MODE_IN_CALL &&
-                       (mForceUse[AudioSystem::FOR_COMMUNICATION] != AudioSystem::FORCE_BT_SCO)) {
-                volume = 1.0;
             } else if (stream == AudioSystem::BLUETOOTH_SCO) {
                 voiceVolume = 1.0;
             }
