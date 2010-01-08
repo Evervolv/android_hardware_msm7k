@@ -18,7 +18,7 @@
 // -- replace Condition::wait with Condition::waitRelative
 // -- use read/write locks
 
-// #define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "QualcommCameraHardware"
 #include <utils/Log.h>
 #include <utils/threads.h>
@@ -571,7 +571,7 @@ namespace android {
 
         mJpegMaxSize = mRawWidth * mRawHeight * 2;
 
-        LOGD("initRaw: clearing old mJpegHeap.");
+        LOGV("initRaw: clearing old mJpegHeap.");
         mJpegHeap = NULL;
 
         LOGV("initRaw: initializing mRawHeap.");
@@ -994,7 +994,7 @@ namespace android {
         case QCS_INTERNAL_RAW_REQUESTED:
         case QCS_WAITING_RAW:
         case QCS_WAITING_JPEG:
-            LOGD("camera state is %s, stopping picture.",
+            LOGV("camera state is %s, stopping picture.",
                  getCameraStateStr(mCameraState));
 
             {
