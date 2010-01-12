@@ -102,6 +102,9 @@ namespace android {
 
 #define KEY_A1026_VR_MODE "vr_mode"
 
+#define MOD_PLAY 1
+#define MOD_REC  2
+
 struct msm_bt_endpoint {
     int tx;
     int rx;
@@ -141,14 +144,13 @@ struct msm_mute_info {
 
 #define CODEC_TYPE_PCM 0
 #define PCM_FILL_BUFFER_COUNT 1
-#define AUDIO_HW_NUM_OUT_BUF 2  // Number of buffers in audio driver for output
+#define AUDIO_HW_NUM_OUT_BUF 4  // Number of buffers in audio driver for output
 // TODO: determine actual audio DSP and hardware latency
 #define AUDIO_HW_OUT_LATENCY_MS 0  // Additionnal latency introduced by audio DSP and hardware in ms
 
 #define AUDIO_HW_IN_SAMPLERATE 8000                 // Default audio input sample rate
 #define AUDIO_HW_IN_CHANNELS (AudioSystem::CHANNEL_IN_MONO) // Default audio input channel mask
-#define AUDIO_HW_IN_BUFFERSIZE 2048                 // Default audio input buffer size
-#define AUDIO_KERNEL_PCM_IN_BUFFERSIZE 2048
+#define AUDIO_KERNEL_PCM_IN_BUFFERSIZE 4096
 #define AUDIO_HW_IN_FORMAT (AudioSystem::PCM_16_BIT)  // Default audio input sample format
 // ----------------------------------------------------------------------------
 
@@ -216,6 +218,7 @@ private:
     status_t    doAudience_A1026_Control(int Mode, bool Record, uint32_t Routes);
     status_t    doRouting(AudioStreamInMSM72xx *input);
     status_t    updateACDB();
+    uint32_t    getACDB(int mode, int device);
     status_t    updateBT();
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
@@ -228,8 +231,8 @@ private:
                                 uint32_t *pChannels,
                                 uint32_t *pRate);
         virtual uint32_t    sampleRate() const { return 44100; }
-        // must be 32-bit aligned - driver only seems to like 4800
-        virtual size_t      bufferSize() const { return 4800; }
+        // must be 32-bit aligned
+        virtual size_t      bufferSize() const { return 3072; }
         virtual uint32_t    channels() const { return AudioSystem::CHANNEL_OUT_STEREO; }
         virtual int         format() const { return AudioSystem::PCM_16_BIT; }
         virtual uint32_t    latency() const { return (1000*AUDIO_HW_NUM_OUT_BUF*(bufferSize()/frameSize()))/sampleRate()+AUDIO_HW_OUT_LATENCY_MS; }

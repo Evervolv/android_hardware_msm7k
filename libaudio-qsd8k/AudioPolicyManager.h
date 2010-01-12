@@ -115,6 +115,7 @@ private:
             AudioOutputDescriptor *mOutput1;    // used by duplicated outputs: first output
             AudioOutputDescriptor *mOutput2;    // used by duplicated outputs: second output
             float mCurVolume[AudioSystem::NUM_STREAM_TYPES];   // current stream volume
+            int mMuteCount[AudioSystem::NUM_STREAM_TYPES];     // mute request counter
         };
 
         // descriptor for audio inputs. Used to maintain current configuration of each opened audio input
@@ -140,14 +141,13 @@ private:
         {
         public:
             StreamDescriptor()
-            :   mIndexMin(0), mIndexMax(1), mIndexCur(1), mMuteCount(0), mCanBeMuted(true) {}
+            :   mIndexMin(0), mIndexMax(1), mIndexCur(1), mCanBeMuted(true) {}
 
             void dump(char* buffer, size_t size);
 
             int mIndexMin;      // min volume index
             int mIndexMax;      // max volume index
             int mIndexCur;      // current volume index
-            int mMuteCount;     // mute request counter
             bool mCanBeMuted;   // true is the stream can be muted
         };
 
@@ -197,6 +197,7 @@ private:
         String8 mA2dpDeviceAddress;                                         // A2DP device MAC address
         String8 mScoDeviceAddress;                                          // SCO device MAC address
         nsecs_t mMusicStopTime;                                             // time when last music stream was stopped
+        bool    mLimitRingtoneVolume;                                       // limit ringtone volume to music volume if headset connected
 };
 
 };

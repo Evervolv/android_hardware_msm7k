@@ -60,6 +60,7 @@ static const uint32_t SND_DEVICE_TTY_FULL = 5;
 static const uint32_t SND_DEVICE_HANDSET_BACK_MIC = 20;
 static const uint32_t SND_DEVICE_SPEAKER_BACK_MIC = 21;
 static const uint32_t SND_DEVICE_NO_MIC_HEADSET_BACK_MIC = 28;
+static const uint32_t SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC = 30;
 namespace android {
 static int support_a1026 = 1;
 static int fd_a1026 = -1;
@@ -74,7 +75,10 @@ static int stream_volume = -300;
 static int vr_mode_enabled;
 static bool vr_mode_change = false;
 static int vr_uses_ns = 0;
+// enable or disable 2-mic noise suppression in call on receiver mode
 static int enable1026 = 1;
+//FIXME add new settings in A1026 driver for an incall no ns mode, based on the current vr no ns
+#define A1026_PATH_INCALL_NO_NS_RECEIVER A1026_PATH_VR_NO_NS_RECEIVER
 
 int errCount = 0;
 static void * acoustic;
@@ -474,7 +478,7 @@ size_t AudioHardware::getInputBufferSize(uint32_t sampleRate, int format, int ch
         return 0;
     }
 
-    return 2048*channelCount;
+    return AUDIO_KERNEL_PCM_IN_BUFFERSIZE*channelCount;
 }
 
 static status_t set_volume_rpc(uint32_t volume)
@@ -524,9 +528,10 @@ status_t AudioHardware::setMasterVolume(float v)
     return -1;
 }
 
-static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall)
+static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall, uint32_t rx_acdb_id, uint32_t tx_acdb_id)
 {
-    int out_device = 0, mic_device = 0;
+    uint32_t out_device = 0, mic_device = 0;
+    uint32_t path[2];
     int fd = 0;
 
     if (device == SND_DEVICE_CURRENT)
@@ -555,6 +560,10 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall)
            out_device = SPKR_PHONE_HEADSET_STEREO;
            mic_device = HEADSET_MIC;
            LOGD("Stereo Headset + Speaker");
+    } else if (device == SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC) {
+           out_device = SPKR_PHONE_HEADSET_STEREO;
+           mic_device = SPKR_PHONE_MIC;
+           LOGD("Stereo Headset + Speaker and back mic");
     } else if (device == SND_DEVICE_NO_MIC_HEADSET) {
            out_device = HEADSET_SPKR_STEREO;
            mic_device = HANDSET_MIC;
@@ -603,12 +612,16 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall)
        LOGE("Cannot open msm_audio_ctl");
        return -1;
     }
-    if (ioctl(fd, AUDIO_SWITCH_DEVICE, &out_device)) {
+    path[0] = out_device;
+    path[1] = rx_acdb_id;
+    if (ioctl(fd, AUDIO_SWITCH_DEVICE, &path)) {
        LOGE("Cannot switch audio device");
        close(fd);
        return -1;
     }
-    if (ioctl(fd, AUDIO_SWITCH_DEVICE, &mic_device)) {
+    path[0] = mic_device;
+    path[1] = tx_acdb_id;
+    if (ioctl(fd, AUDIO_SWITCH_DEVICE, &path)) {
        LOGE("Cannot switch mic device");
        close(fd);
        return -1;
@@ -660,15 +673,31 @@ Incall:
 // always call with mutex held
 status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
 {
+    uint32_t rx_acdb_id = 0;
+    uint32_t tx_acdb_id = 0;
+
     if (support_a1026 == 1)
-        doAudience_A1026_Control(mMode, mRecordState, device);
+            doAudience_A1026_Control(mMode, mRecordState, device);
 
     if (device == (uint32_t)SND_DEVICE_BT || device == (uint32_t)SND_DEVICE_CARKIT) {
         if (!mBluetoothNrec) {
             device = SND_DEVICE_BT_EC_OFF;
         }
     }
-    return do_route_audio_dev_ctrl(device, mMode == AudioSystem::MODE_IN_CALL);
+
+    if (mMode == AudioSystem::MODE_IN_CALL && mBluetoothIdTx != 0
+            && device == (int) SND_DEVICE_BT) {
+        rx_acdb_id = mBluetoothIdRx;
+        tx_acdb_id = mBluetoothIdTx;
+    } else {
+        if (!checkOutputStandby())
+            rx_acdb_id = getACDB(MOD_PLAY, device);
+        if (mRecordState)
+            tx_acdb_id = getACDB(MOD_REC, device);
+    }
+    LOGV("doAudioRouteOrMute: rx acdb %d, tx acdb %d\n", rx_acdb_id, tx_acdb_id);
+
+    return do_route_audio_dev_ctrl(device, mMode == AudioSystem::MODE_IN_CALL, rx_acdb_id, tx_acdb_id);
 }
 
 status_t AudioHardware::get_mMode(void)
@@ -776,69 +805,17 @@ status_t AudioHardware::get_snd_dev(void)
     return mCurSndDevice;
 }
 
-status_t AudioHardware::updateBT(void)
+uint32_t AudioHardware::getACDB(int mode, int device)
 {
-    int fd = 0;
-    uint32_t id[2];
-
-    fd = open("/dev/msm_audio_ctl", O_RDWR);
-    if (fd < 0)        {
-       LOGE("Cannot open msm_audio_ctl");
-       return -1;
-    }
-    int rc = 0;
-    if (mBluetoothIdRx != -1UL) {
-        id[0] = mBluetoothIdRx;
-        id[1] = curr_out_device;
-        LOGE("(mBluetoothIdRx, curr_out_device) = (%d, %d)", mBluetoothIdRx, curr_out_device);
-        rc = ioctl(fd, AUDIO_UPDATE_ACDB, &id);
-        if (rc) {
-           LOGE("Cannot update RX ACDB %d, rc=%d", mBluetoothIdRx, rc);
-           close(fd);
-           return -1;
-        } else
-           LOGD("update TX ACDB %d success", mBluetoothIdRx);
-    }
-
-    if (mBluetoothIdTx != -1UL) {
-        id[0] = mBluetoothIdTx;
-        id[1] = curr_mic_device;
-        LOGE("(mBluetoothIdTx, curr_out_device) = (%d, %d)", mBluetoothIdTx, curr_out_device);
-        rc = ioctl(fd, AUDIO_UPDATE_ACDB, &id);
-        if (rc) {
-           LOGE("Cannot update TX ACDB %d, rc = %d", mBluetoothIdTx, rc);
-           close(fd);
-           return -1;
-        } else
-           LOGD("update TX ACDB %d success", mBluetoothIdTx);
-    }
-    close(fd);
-    return 0;
-}
-
-// always call with mutex held
-status_t AudioHardware::updateACDB(void)
-{
-
-    int fd = 0;
-    int acdb_id = -1;
-    uint32_t id[2];
-
-    fd = open("/dev/msm_audio_ctl", O_RDWR);
-    if (fd < 0)        {
-       LOGE("Cannot open msm_audio_ctl");
-       return -1;
-    }
+    uint32_t acdb_id = 0;
 
     if (mMode == AudioSystem::MODE_IN_CALL) {
         LOGD("skip update ACDB due to in-call");
-        close(fd);
         return 0;
     }
 
-    //update RX acdb parameters.
-    if (!checkOutputStandby()) {
-        switch (mCurSndDevice) {
+    if (mode == MOD_PLAY) {
+        switch (device) {
             case SND_DEVICE_HEADSET:
             case SND_DEVICE_NO_MIC_HEADSET:
             case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
@@ -851,30 +828,18 @@ status_t AudioHardware::updateACDB(void)
                 acdb_id = ACDB_ID_SPKR_PLAYBACK;
                 break;
             case SND_DEVICE_HEADSET_AND_SPEAKER:
+            case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
                 acdb_id = ACDB_ID_HEADSET_RINGTONE_PLAYBACK;
                 break;
             default:
                 break;
         }
-    }
-    if (acdb_id != -1) {
-        id[0] = acdb_id;
-        id[1] = curr_out_device;
-        if (ioctl(fd, AUDIO_UPDATE_ACDB, &id)) {
-           LOGE("Cannot update RX ACDB %d", acdb_id);
-           close(fd);
-           return -1;
-        } else
-           LOGD("update RX ACDB %d success", acdb_id);
-    }
-
-    //update TX acdb parameters.
-    acdb_id = -1;
-    if (mRecordState) {
-        switch (mCurSndDevice) {
+    } else if (mode == MOD_REC) {
+        switch (device) {
             case SND_DEVICE_HEADSET:
             case SND_DEVICE_FM_HEADSET:
             case SND_DEVICE_FM_SPEAKER:
+            case SND_DEVICE_HEADSET_AND_SPEAKER:
                 acdb_id = ACDB_ID_EXT_MIC_REC;
                 break;
             case SND_DEVICE_HANDSET:
@@ -889,25 +854,17 @@ status_t AudioHardware::updateACDB(void)
             case SND_DEVICE_SPEAKER_BACK_MIC:
             case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
             case SND_DEVICE_HANDSET_BACK_MIC:
+            case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
                 acdb_id = ACDB_ID_CAMCORDER;
                 break;
             default:
                 break;
         }
     }
-    if (acdb_id != -1) {
-        id[0] = acdb_id;
-        id[1] = curr_mic_device;
-        if (ioctl(fd, AUDIO_UPDATE_ACDB, &id)) {
-           LOGE("Cannot update TX ACDB %d", acdb_id);
-           close(fd);
-           return -1;
-        } else
-           LOGD("update TX ACDB %d success", acdb_id);
-    }
-    close(fd);
-    return 0;
+    LOGV("getACDB, return ID %d\n", acdb_id);
+    return acdb_id;
 }
+
 
 status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t Routes)
 {
@@ -943,13 +900,19 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	            //TODO: what do we do for camcorder when in call?
 	        case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
 	        case SND_DEVICE_HANDSET_BACK_MIC:
+	            if (enable1026) {
                     new_pathid = A1026_PATH_INCALL_RECEIVER;
                     LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
-                    break;
-                case SND_DEVICE_HEADSET:
-                case SND_DEVICE_HEADSET_AND_SPEAKER:
-                case SND_DEVICE_FM_HEADSET:
-                case SND_DEVICE_FM_SPEAKER:
+	            } else {
+	                new_pathid = A1026_PATH_INCALL_NO_NS_RECEIVER;
+	                LOGV("A1026 control: new path is A1026_PATH_INCALL_NO_NS_RECEIVER");
+	            }
+	            break;
+	        case SND_DEVICE_HEADSET:
+	        case SND_DEVICE_HEADSET_AND_SPEAKER:
+	        case SND_DEVICE_FM_HEADSET:
+	        case SND_DEVICE_FM_SPEAKER:
+	        case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
 	            new_pathid = A1026_PATH_INCALL_HEADSET;
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
@@ -971,13 +934,18 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
            switch (Routes) {
 	        case SND_DEVICE_HANDSET:
 	        case SND_DEVICE_NO_MIC_HEADSET:
-                    new_pathid = A1026_PATH_INCALL_RECEIVER; /* NS CT mode, Dual MIC */
+	            if (enable1026) {
+	                new_pathid = A1026_PATH_INCALL_RECEIVER; /* NS CT mode, Dual MIC */
                     LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
-                    break;
-                case SND_DEVICE_HEADSET:
-                case SND_DEVICE_HEADSET_AND_SPEAKER:
-                case SND_DEVICE_FM_HEADSET:
-                case SND_DEVICE_FM_SPEAKER:
+	            } else {
+	                new_pathid = A1026_PATH_INCALL_NO_NS_RECEIVER;
+	                LOGV("A1026 control: new path is A1026_PATH_INCALL_NO_NS_RECEIVER");
+	            }
+	            break;
+	        case SND_DEVICE_HEADSET:
+	        case SND_DEVICE_HEADSET_AND_SPEAKER:
+	        case SND_DEVICE_FM_HEADSET:
+	        case SND_DEVICE_FM_SPEAKER:
 	            new_pathid = A1026_PATH_INCALL_HEADSET; /* NS disable, Headset MIC */
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
@@ -1009,7 +977,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_RECEIVER");
 	            }
 	        } else {
-                new_pathid = A1026_PATH_RECORD_RECEIVER; /* INT-MIC Recording: NS disable, Main MIC */
+	            new_pathid = A1026_PATH_RECORD_RECEIVER; /* INT-MIC Recording: NS disable, Main MIC */
                 LOGV("A1026 control: new path is A1026_PATH_RECORD_RECEIVER");
 	        }
 	        break;
@@ -1033,7 +1001,9 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         case SND_DEVICE_SPEAKER_BACK_MIC:
         case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
         case SND_DEVICE_HANDSET_BACK_MIC:
+        case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
 	        new_pathid = A1026_PATH_CAMCORDER; /* CAM-Coder: NS FT mode, Back MIC */
+	        LOGV("A1026 control: new path is A1026_PATH_CAMCORDER");
 	        break;
         case SND_DEVICE_BT:
         case SND_DEVICE_BT_EC_OFF:
@@ -1106,15 +1076,19 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
                 sndDevice = SND_DEVICE_BT;
             } else if (inputDevice & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
                 if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
-                    (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
-                    LOGI("Routing audio to Wired Headset and Speaker\n");
-                    sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
+                        (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
+                            LOGI("Routing audio to Wired Headset and Speaker\n");
+                            sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
                 } else {
                     LOGI("Routing audio to Wired Headset\n");
                     sndDevice = SND_DEVICE_HEADSET;
                 }
             } else if (inputDevice & AudioSystem::DEVICE_IN_BACK_MIC) {
-                if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
+                if (outputDevices & (AudioSystem:: DEVICE_OUT_WIRED_HEADSET) &&
+                       (outputDevices & AudioSystem:: DEVICE_OUT_SPEAKER)) {
+                    LOGI("Routing audio to Wired Headset and Speaker with back mic\n");
+                    sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC;
+                } else if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
                     LOGI("Routing audio to Speakerphone with back mic\n");
                     sndDevice = SND_DEVICE_SPEAKER_BACK_MIC;
                 } else if (outputDevices == AudioSystem::DEVICE_OUT_EARPIECE) {
@@ -1144,35 +1118,21 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
         if (outputDevices & (outputDevices - 1)) {
             if ((outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) == 0) {
                 LOGW("Hardware does not support requested route combination (%#X),"
-                     " picking closest possible route...", outputDevices);
+                        " picking closest possible route...", outputDevices);
             }
         }
 
-        if (outputDevices & AudioSystem::DEVICE_OUT_TTY) {
-                LOGI("Routing audio to TTY\n");
-                sndDevice = SND_DEVICE_TTY_FULL;
-        } else if (outputDevices &
-                   (AudioSystem::DEVICE_OUT_BLUETOOTH_SCO | AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET)) {
-            LOGI("Routing audio to Bluetooth PCM\n");
-            sndDevice = SND_DEVICE_BT;
+        if (outputDevices &
+                (AudioSystem::DEVICE_OUT_BLUETOOTH_SCO | AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_HEADSET)) {
+                    LOGI("Routing audio to Bluetooth PCM\n");
+                    sndDevice = SND_DEVICE_BT;
         } else if (outputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT) {
             LOGI("Routing audio to Bluetooth PCM\n");
             sndDevice = SND_DEVICE_CARKIT;
         } else if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
-                   (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
-            LOGI("Routing audio to Wired Headset and Speaker\n");
-            sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-        } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_SPEAKER) {
-            LOGI("Routing audio to FM Speakerphone (%d,%x)\n", mMode, outputDevices);
-            sndDevice = SND_DEVICE_FM_SPEAKER;
-        } else if (outputDevices & AudioSystem::DEVICE_OUT_FM_HEADPHONE) {
-            if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-                LOGI("Routing audio to FM Headset and Speaker (%d,%x)\n", mMode, outputDevices);
-                sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-            } else {
-                LOGI("Routing audio to FM Headset (%d,%x)\n", mMode, outputDevices);
-                sndDevice = SND_DEVICE_FM_HEADSET;
-            }
+                (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
+                    LOGI("Routing audio to Wired Headset and Speaker\n");
+                    sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
         } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
             if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
                 LOGI("Routing audio to No microphone Wired Headset and Speaker (%d,%x)\n", mMode, outputDevices);
@@ -1196,10 +1156,6 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
     if ((vr_mode_change) || (sndDevice != -1 && sndDevice != mCurSndDevice)) {
         ret = doAudioRouteOrMute(sndDevice);
         mCurSndDevice = sndDevice;
-        if (mMode == AudioSystem::MODE_IN_CALL && mBluetoothIdTx != 0
-                && sndDevice == SND_DEVICE_BT) {
-            ret = updateBT();
-        } else if (!ret) ret = updateACDB();
     }
 
     return ret;
@@ -1353,7 +1309,8 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         LOGV("channel_count: %u", config.channel_count);
         LOGV("sample_rate: %u", config.sample_rate);
 
-        status = ioctl(mFd, AUDIO_START, 0);
+        uint32_t acdb_id = mHardware->getACDB(MOD_PLAY, mHardware->get_snd_dev());
+        status = ioctl(mFd, AUDIO_START, &acdb_id);
         if (status < 0) {
             LOGE("Cannot start pcm playback");
             goto Error;
@@ -1368,8 +1325,6 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         LOGV("acquire wakelock");
         acquire_wake_lock(PARTIAL_WAKE_LOCK, kOutputWakelockStr);
         mStandby = false;
-        Mutex::Autolock lock(mHardware->mLock);
-        mHardware->updateACDB();
     }
 
     while (count) {
@@ -1487,7 +1442,7 @@ String8 AudioHardware::AudioStreamOutMSM72xx::getParameters(const String8& keys)
 AudioHardware::AudioStreamInMSM72xx::AudioStreamInMSM72xx() :
     mHardware(0), mFd(-1), mState(AUDIO_INPUT_CLOSED), mRetryCount(0),
     mFormat(AUDIO_HW_IN_FORMAT), mChannels(AUDIO_HW_IN_CHANNELS),
-    mSampleRate(AUDIO_HW_IN_SAMPLERATE), mBufferSize(AUDIO_HW_IN_BUFFERSIZE),
+    mSampleRate(AUDIO_HW_IN_SAMPLERATE), mBufferSize(AUDIO_KERNEL_PCM_IN_BUFFERSIZE),
     mAcoustics((AudioSystem::audio_in_acoustics)0), mDevices(0)
 {
 }
@@ -1613,17 +1568,16 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 
     if (mState < AUDIO_INPUT_STARTED) {
         mHardware->set_mRecordState(1);
-    if (support_a1026 == 1) {
-        mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 1, mHardware->get_snd_dev());
+        if (support_a1026 == 1) {
+            mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 1, mHardware->get_snd_dev());
         }
-        if (ioctl(mFd, AUDIO_START, 0)) {
+        uint32_t acdb_id = mHardware->getACDB(MOD_REC, mHardware->get_snd_dev());
+        if (ioctl(mFd, AUDIO_START, &acdb_id)) {
             LOGE("Error starting record");
             return -1;
         }
         LOGI("AUDIO_START: start kernel pcm_in driver.");
         mState = AUDIO_INPUT_STARTED;
-        Mutex::Autolock lock(mHardware->mLock);
-        mHardware->updateACDB();
     }
 
     while (count) {
@@ -1642,10 +1596,10 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 
 status_t AudioHardware::AudioStreamInMSM72xx::standby()
 {
-        if (mHardware) {
+    if (mHardware) {
         mHardware->set_mRecordState(0);
         if (support_a1026 == 1) {
-        mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 0, mHardware->get_snd_dev());
+            mHardware->doAudience_A1026_Control(mHardware->get_mMode(), 0, mHardware->get_snd_dev());
         }
     }
 
@@ -1701,11 +1655,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
     if (param.getInt(key, enabled) == NO_ERROR) {
         LOGV("set vr_mode_enabled to %d", enabled);
         vr_mode_change = (vr_mode_enabled != enabled);
-        if (enable1026) {
-            vr_mode_enabled = enabled;
-        } else {
-            vr_mode_enabled = 0;
-        }
+        vr_mode_enabled = enabled;
         param.remove(key);
     }
 
