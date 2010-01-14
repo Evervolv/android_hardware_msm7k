@@ -686,7 +686,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
     }
 
     if (mMode == AudioSystem::MODE_IN_CALL && mBluetoothIdTx != 0
-            && device == (int) SND_DEVICE_BT) {
+            && (device == (int) SND_DEVICE_BT || device == (int) SND_DEVICE_BT_EC_OFF)) {
         rx_acdb_id = mBluetoothIdRx;
         tx_acdb_id = mBluetoothIdTx;
     } else {
