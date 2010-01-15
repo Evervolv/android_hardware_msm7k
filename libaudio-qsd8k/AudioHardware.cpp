@@ -95,7 +95,8 @@ AudioHardware::AudioHardware() :
     mA1026Init(false), mInit(false), mMicMute(true),
     mBluetoothNrec(true), mBluetoothIdTx(0),
     mBluetoothIdRx(0), mOutput(0),
-    mNoiseSuppressionState(A1026_NS_STATE_AUTO)
+    mNoiseSuppressionState(A1026_NS_STATE_AUTO),
+    mVoiceVolume(VOICE_VOLUME_MAX)
 {
     int (*snd_get_num)();
     int (*snd_get_bt_endpoint)(msm_bt_endpoint *);
@@ -508,20 +509,19 @@ status_t AudioHardware::setVoiceVolume(float v)
         v = 1.0;
     }
 
-    int vol = lrint(v * 5.0);
+    int vol = lrint(v * VOICE_VOLUME_MAX);
     LOGD("setVoiceVolume(%f)\n", v);
-    LOGI("Setting in-call volume to %d (available range is 0 to 5)\n", vol);
+    LOGI("Setting in-call volume to %d (available range is 0 to %d)\n", vol, VOICE_VOLUME_MAX);
 
     Mutex::Autolock lock(mLock);
     set_volume_rpc(vol); //always set current device
+    mVoiceVolume = vol;
     return NO_ERROR;
 }
 
 status_t AudioHardware::setMasterVolume(float v)
 {
-    Mutex::Autolock lock(mLock);
-    int vol = ceil(v * 5.0);
-    LOGI("Set master volume to %d.\n", vol);
+    LOGI("Set master volume to %f.\n", v);
     // We return an error code here to let the audioflinger do in-software
     // volume on top of the maximum volume that we set through the SND API.
     // return error - software mixer will handle it
@@ -1156,6 +1156,9 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
     if ((vr_mode_change) || (sndDevice != -1 && sndDevice != mCurSndDevice)) {
         ret = doAudioRouteOrMute(sndDevice);
         mCurSndDevice = sndDevice;
+        if (mMode == AudioSystem::MODE_IN_CALL) {
+            set_volume_rpc(mVoiceVolume);
+        }
     }
 
     return ret;
