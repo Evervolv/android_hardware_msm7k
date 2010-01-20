@@ -177,6 +177,7 @@ private:
         virtual status_t    setParameters(const String8& keyValuePairs);
         virtual String8     getParameters(const String8& keys);
                 uint32_t    devices() { return mDevices; }
+        virtual status_t    getRenderPosition(uint32_t *dspFrames);
 
     private:
                 AudioHardware* mHardware;
