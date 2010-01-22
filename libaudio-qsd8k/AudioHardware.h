@@ -152,6 +152,8 @@ struct msm_mute_info {
 #define AUDIO_HW_IN_CHANNELS (AudioSystem::CHANNEL_IN_MONO) // Default audio input channel mask
 #define AUDIO_KERNEL_PCM_IN_BUFFERSIZE 4096
 #define AUDIO_HW_IN_FORMAT (AudioSystem::PCM_16_BIT)  // Default audio input sample format
+
+#define VOICE_VOLUME_MAX 5  // Maximum voice volume
 // ----------------------------------------------------------------------------
 
 
@@ -311,6 +313,7 @@ private:
             int mNumBTEndpoints;
             int mCurSndDevice;
             int mNoiseSuppressionState;
+            uint32_t mVoiceVolume;
 
      friend class AudioStreamInMSM72xx;
             Mutex       mLock;
