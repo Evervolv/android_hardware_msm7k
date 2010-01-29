@@ -544,6 +544,27 @@ static unsigned calculate_audpre_table_index(unsigned index)
         default:     return -1;
     }
 }
+
+size_t AudioHardware::getBufferSize(uint32_t sampleRate, int channelCount)
+{
+    size_t bufSize;
+
+    if (sampleRate < 11025) {
+        bufSize = 256;
+    } else if (sampleRate < 22050) {
+        bufSize = 512;
+    } else if (sampleRate < 32000) {
+        bufSize = 768;
+    } else if (sampleRate < 44100) {
+        bufSize = 1024;
+    } else {
+        bufSize = 1536;
+    }
+
+    return bufSize*channelCount;
+}
+
+
 size_t AudioHardware::getInputBufferSize(uint32_t sampleRate, int format, int channelCount)
 {
     if (format != AudioSystem::PCM_16_BIT) {
@@ -554,8 +575,12 @@ size_t AudioHardware::getInputBufferSize(uint32_t sampleRate, int format, int ch
         LOGW("getInputBufferSize bad channel count: %d", channelCount);
         return 0;
     }
+    if (sampleRate < 8000 || sampleRate > 48000) {
+        LOGW("getInputBufferSize bad sample rate: %d", sampleRate);
+        return 0;
+    }
 
-    return AUDIO_KERNEL_PCM_IN_BUFFERSIZE*channelCount;
+    return getBufferSize(sampleRate, channelCount);
 }
 
 static status_t set_volume_rpc(uint32_t volume)
@@ -1478,7 +1503,9 @@ AudioHardware::AudioStreamInMSM72xx *AudioHardware::getActiveInput_l()
 // ----------------------------------------------------------------------------
 
 AudioHardware::AudioStreamOutMSM72xx::AudioStreamOutMSM72xx() :
-    mHardware(0), mFd(-1), mStartCount(0), mRetryCount(0), mStandby(true), mDevices(0)
+    mHardware(0), mFd(-1), mStartCount(0), mRetryCount(0), mStandby(true),
+    mDevices(0), mChannels(AUDIO_HW_OUT_CHANNELS), mSampleRate(AUDIO_HW_OUT_SAMPLERATE),
+    mBufferSize(AUDIO_HW_OUT_BUFSZ)
 {
 }
 
@@ -1490,6 +1517,7 @@ status_t AudioHardware::AudioStreamOutMSM72xx::set(
     uint32_t lRate = pRate ? *pRate : 0;
 
     mHardware = hw;
+    mDevices = devices;
 
     // fix up defaults
     if (lFormat == 0) lFormat = format();
@@ -1510,7 +1538,9 @@ status_t AudioHardware::AudioStreamOutMSM72xx::set(
     if (pChannels) *pChannels = lChannels;
     if (pRate) *pRate = lRate;
 
-    mDevices = devices;
+    mChannels = lChannels;
+    mSampleRate = lRate;
+    mBufferSize = hw->getBufferSize(lRate, AudioSystem::popCount(lChannels));
 
     return NO_ERROR;
 }
@@ -1551,8 +1581,8 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
 
         LOGV("set pcm_out config");
         config.channel_count = AudioSystem::popCount(channels());
-        config.sample_rate = sampleRate();
-        config.buffer_size = bufferSize();
+        config.sample_rate = mSampleRate;
+        config.buffer_size = mBufferSize;
         config.buffer_count = AUDIO_HW_NUM_OUT_BUF;
         config.codec_type = CODEC_TYPE_PCM;
         status = ioctl(mFd, AUDIO_SET_CONFIG, &config);
@@ -1704,7 +1734,7 @@ status_t AudioHardware::AudioStreamOutMSM72xx::getRenderPosition(uint32_t *dspFr
 AudioHardware::AudioStreamInMSM72xx::AudioStreamInMSM72xx() :
     mHardware(0), mFd(-1), mState(AUDIO_INPUT_CLOSED), mRetryCount(0),
     mFormat(AUDIO_HW_IN_FORMAT), mChannels(AUDIO_HW_IN_CHANNELS),
-    mSampleRate(AUDIO_HW_IN_SAMPLERATE), mBufferSize(AUDIO_KERNEL_PCM_IN_BUFFERSIZE),
+    mSampleRate(AUDIO_HW_IN_SAMPLERATE), mBufferSize(AUDIO_HW_IN_BUFSZ),
     mAcoustics((AudioSystem::audio_in_acoustics)0), mDevices(0)
 {
 }
@@ -1747,6 +1777,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
         goto Error;
     }
     mFd = status;
+    mBufferSize = hw->getBufferSize(*pRate, AudioSystem::popCount(*pChannels));
 
     // configuration
     LOGV("get config");
@@ -1760,7 +1791,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     LOGV("set config");
     config.channel_count = AudioSystem::popCount(*pChannels);
     config.sample_rate = *pRate;
-    config.buffer_size = bufferSize();
+    config.buffer_size = mBufferSize;
     config.buffer_count = 2;
     config.codec_type = CODEC_TYPE_PCM;
     status = ioctl(mFd, AUDIO_SET_CONFIG, &config);

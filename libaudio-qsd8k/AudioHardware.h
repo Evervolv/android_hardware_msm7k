@@ -150,11 +150,15 @@ struct msm_mute_info {
 #define AUDIO_HW_NUM_OUT_BUF 4  // Number of buffers in audio driver for output
 // TODO: determine actual audio DSP and hardware latency
 #define AUDIO_HW_OUT_LATENCY_MS 0  // Additionnal latency introduced by audio DSP and hardware in ms
+#define AUDIO_HW_OUT_SAMPLERATE 44100 // Default audio output sample rate
+#define AUDIO_HW_OUT_CHANNELS (AudioSystem::CHANNEL_OUT_STEREO) // Default audio output channel mask
+#define AUDIO_HW_OUT_FORMAT (AudioSystem::PCM_16_BIT)  // Default audio output sample format
+#define AUDIO_HW_OUT_BUFSZ 3072  // Default audio output buffer size
 
 #define AUDIO_HW_IN_SAMPLERATE 8000                 // Default audio input sample rate
 #define AUDIO_HW_IN_CHANNELS (AudioSystem::CHANNEL_IN_MONO) // Default audio input channel mask
-#define AUDIO_KERNEL_PCM_IN_BUFFERSIZE 4096
 #define AUDIO_HW_IN_FORMAT (AudioSystem::PCM_16_BIT)  // Default audio input sample format
+#define AUDIO_HW_IN_BUFSZ 256  // Default audio input buffer size
 
 #define VOICE_VOLUME_MAX 5  // Maximum voice volume
 // ----------------------------------------------------------------------------
@@ -229,6 +233,7 @@ private:
     uint32_t    getACDB(int mode, int device);
     AudioStreamInMSM72xx*   getActiveInput_l();
     status_t    do_tpa2018_control(int mode);
+    size_t      getBufferSize(uint32_t sampleRate, int channelCount);
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
     public:
@@ -239,11 +244,11 @@ private:
                                 int *pFormat,
                                 uint32_t *pChannels,
                                 uint32_t *pRate);
-        virtual uint32_t    sampleRate() const { return 44100; }
+        virtual uint32_t    sampleRate() const { return mSampleRate; }
         // must be 32-bit aligned
-        virtual size_t      bufferSize() const { return 3072; }
-        virtual uint32_t    channels() const { return AudioSystem::CHANNEL_OUT_STEREO; }
-        virtual int         format() const { return AudioSystem::PCM_16_BIT; }
+        virtual size_t      bufferSize() const { return mBufferSize; }
+        virtual uint32_t    channels() const { return mChannels; }
+        virtual int         format() const { return AUDIO_HW_OUT_FORMAT; }
         virtual uint32_t    latency() const { return (1000*AUDIO_HW_NUM_OUT_BUF*(bufferSize()/frameSize()))/sampleRate()+AUDIO_HW_OUT_LATENCY_MS; }
         virtual status_t    setVolume(float left, float right) { return INVALID_OPERATION; }
         virtual ssize_t     write(const void* buffer, size_t bytes);
@@ -262,6 +267,9 @@ private:
                 int         mRetryCount;
                 bool        mStandby;
                 uint32_t    mDevices;
+                uint32_t    mChannels;
+                uint32_t    mSampleRate;
+                size_t      mBufferSize;
     };
 
     class AudioStreamInMSM72xx : public AudioStreamIn {
