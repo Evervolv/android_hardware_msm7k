@@ -39,7 +39,7 @@
 
 extern "C" {
 #include "msm_audio.h"
-#include "a1026.h"
+#include <linux/a1026.h>
 }
 
 #define LOG_SND_RPC 0  // Set to 1 to log sound RPC's
