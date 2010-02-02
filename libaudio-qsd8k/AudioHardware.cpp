@@ -58,6 +58,8 @@ static const uint32_t SND_DEVICE_FM_HEADSET = 9;
 static const uint32_t SND_DEVICE_FM_SPEAKER = 11;
 static const uint32_t SND_DEVICE_NO_MIC_HEADSET = 8;
 static const uint32_t SND_DEVICE_TTY_FULL = 5;
+static const uint32_t SND_DEVICE_TTY_VCO = 6;
+static const uint32_t SND_DEVICE_TTY_HCO = 7;
 static const uint32_t SND_DEVICE_HANDSET_BACK_MIC = 20;
 static const uint32_t SND_DEVICE_SPEAKER_BACK_MIC = 21;
 static const uint32_t SND_DEVICE_NO_MIC_HEADSET_BACK_MIC = 28;
@@ -102,7 +104,7 @@ AudioHardware::AudioHardware() :
     mBluetoothIdTx(0), mBluetoothIdRx(0),
     mOutput(0),
     mNoiseSuppressionState(A1026_NS_STATE_AUTO),
-    mVoiceVolume(VOICE_VOLUME_MAX)
+    mVoiceVolume(VOICE_VOLUME_MAX), mTTYMode(TTY_MODE_OFF)
 {
     int (*snd_get_num)();
     int (*snd_get_bt_endpoint)(msm_bt_endpoint *);
@@ -467,6 +469,28 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
         }
      }
 
+    key = String8("tty_mode");
+    if (param.get(key, value) == NO_ERROR) {
+        int ttyMode;
+        if (value == "tty_off") {
+            ttyMode = TTY_MODE_OFF;
+        } else if (value == "tty_full") {
+            ttyMode = TTY_MODE_FULL;
+        } else if (value == "tty_vco") {
+            ttyMode = TTY_MODE_VCO;
+        } else if (value == "tty_hco") {
+            ttyMode = TTY_MODE_HCO;
+        } else {
+            return BAD_VALUE;
+        }
+
+        if (ttyMode != mTTYMode) {
+            LOGV("new tty mode %d", ttyMode);
+            mTTYMode = ttyMode;
+            doRouting(NULL);
+        }
+     }
+
     return NO_ERROR;
 }
 
@@ -640,9 +664,21 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall, uint32_t r
            out_device = BT_SCO_SPKR;
            mic_device = BT_SCO_MIC;
            LOGD("Carkit");
+    } else if (device == SND_DEVICE_TTY_FULL) {
+        out_device = TTY_HEADSET_SPKR;
+        mic_device = TTY_HEADSET_MIC;
+        LOGD("TTY FULL headset");
+    } else if (device == SND_DEVICE_TTY_VCO) {
+        out_device = TTY_HEADSET_SPKR;
+        mic_device = HANDSET_MIC;
+        LOGD("TTY VCO headset");
+    } else if (device == SND_DEVICE_TTY_HCO) {
+        out_device = SPKR_PHONE_MONO;
+        mic_device = TTY_HEADSET_MIC;
+        LOGD("TTY HCO headset");
     } else {
-           LOGE("unknown device %d", device);
-           return -1;
+        LOGE("unknown device %d", device);
+        return -1;
     }
 
 #if 0 //Add for FM support
@@ -1067,6 +1103,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	            //TODO: what do we do for camcorder when in call?
 	        case SND_DEVICE_NO_MIC_HEADSET_BACK_MIC:
 	        case SND_DEVICE_HANDSET_BACK_MIC:
+	        case SND_DEVICE_TTY_VCO:
 	            if (enable1026) {
                     new_pathid = A1026_PATH_INCALL_RECEIVER;
                     LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
@@ -1080,6 +1117,8 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_FM_HEADSET:
 	        case SND_DEVICE_FM_SPEAKER:
 	        case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
+	        case SND_DEVICE_TTY_HCO:
+	        case SND_DEVICE_TTY_FULL:
 	            new_pathid = A1026_PATH_INCALL_HEADSET;
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
@@ -1102,6 +1141,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
            switch (Routes) {
 	        case SND_DEVICE_HANDSET:
 	        case SND_DEVICE_NO_MIC_HEADSET:
+	        case SND_DEVICE_TTY_VCO:
 	            if (enable1026) {
 	                new_pathid = A1026_PATH_INCALL_RECEIVER; /* NS CT mode, Dual MIC */
                     LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
@@ -1114,6 +1154,8 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_HEADSET_AND_SPEAKER:
 	        case SND_DEVICE_FM_HEADSET:
 	        case SND_DEVICE_FM_SPEAKER:
+	        case SND_DEVICE_TTY_HCO:
+	        case SND_DEVICE_TTY_FULL:
 	            new_pathid = A1026_PATH_INCALL_HEADSET; /* NS disable, Headset MIC */
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
@@ -1237,7 +1279,24 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
     status_t ret = NO_ERROR;
     int sndDevice = -1;
 
-    if (input != NULL) {
+    if (mMode == AudioSystem::MODE_IN_CALL && mTTYMode != TTY_MODE_OFF) {
+        if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) ||
+            (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE)) {
+            switch (mTTYMode) {
+            case TTY_MODE_FULL:
+                sndDevice = SND_DEVICE_TTY_FULL;
+                break;
+            case TTY_MODE_VCO:
+                sndDevice = SND_DEVICE_TTY_VCO;
+                break;
+            case TTY_MODE_HCO:
+                sndDevice = SND_DEVICE_TTY_HCO;
+                break;
+            }
+        }
+    }
+
+    if (sndDevice == -1 && input != NULL) {
         uint32_t inputDevice = input->devices();
         LOGI("do input routing device %x\n", inputDevice);
         if (inputDevice != 0) {
