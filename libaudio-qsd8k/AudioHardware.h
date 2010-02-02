@@ -201,6 +201,8 @@ public:
 
     virtual size_t getInputBufferSize(uint32_t sampleRate, int format, int channelCount);
 
+               void        clearCurDevice() { mCurSndDevice = -1; }
+
 protected:
     virtual status_t    dump(int fd, const Vector<String16>& args);
 
@@ -218,10 +220,10 @@ private:
     status_t    doA1026_init();
     status_t    get_snd_dev();
     status_t    doAudience_A1026_Control(int Mode, bool Record, uint32_t Routes);
-    status_t    doRouting(AudioStreamInMSM72xx *input);
+    status_t    doRouting();
     status_t    updateACDB();
     uint32_t    getACDB(int mode, int device);
-    status_t    updateBT();
+    AudioStreamInMSM72xx*   getActiveInput_l();
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
     public:
@@ -284,6 +286,7 @@ private:
         virtual status_t    setParameters(const String8& keyValuePairs);
         virtual String8     getParameters(const String8& keys);
                 uint32_t    devices() { return mDevices; }
+                int         state() const { return mState; }
 
     private:
                 AudioHardware* mHardware;

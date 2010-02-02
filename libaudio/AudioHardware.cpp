@@ -242,7 +242,7 @@ status_t AudioHardware::setMode(int mode)
     if (status == NO_ERROR) {
         // make sure that doAudioRouteOrMute() is called by doRouting()
         // even if the new device selected is the same as current one.
-        mCurSndDevice = -1;
+        clearCurDevice();
     }
     return status;
 }
@@ -315,7 +315,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
         if (mBluetoothId == 0) {
             LOGI("Using default acoustic parameters "
                  "(%s not in acoustic database)", value.string());
-            doRouting(NULL);
+            doRouting();
         }
     }
     return NO_ERROR;
@@ -488,7 +488,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
                               mMode != AudioSystem::MODE_IN_CALL, mMicMute);
 }
 
-status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
+status_t AudioHardware::doRouting()
 {
     /* currently this code doesn't work without the htc libacoustic */
     if (!acoustic)
@@ -500,38 +500,37 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
     int (*msm72xx_enable_audpp)(int);
     msm72xx_enable_audpp = (int (*)(int))::dlsym(acoustic, "msm72xx_enable_audpp");
     int audProcess = (ADRC_DISABLE | EQ_DISABLE | RX_IIR_DISABLE);
+    AudioStreamInMSM72xx *input = getActiveInput_l();
+    uint32_t inputDevice = (input == NULL) ? 0 : input->devices();
     int sndDevice = -1;
 
-    if (input != NULL) {
-        uint32_t inputDevice = input->devices();
+    if (inputDevice != 0) {
         LOGI("do input routing device %x\n", inputDevice);
-        if (inputDevice != 0) {
-            if (inputDevice & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
-                LOGI("Routing audio to Bluetooth PCM\n");
-                sndDevice = SND_DEVICE_BT;
-            } else if (inputDevice & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
-                if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
-                    (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
-                    LOGI("Routing audio to Wired Headset and Speaker\n");
-                    sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-                    audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
-                } else {
-                    LOGI("Routing audio to Wired Headset\n");
-                    sndDevice = SND_DEVICE_HEADSET;
-                }
+        if (inputDevice & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
+            LOGI("Routing audio to Bluetooth PCM\n");
+            sndDevice = SND_DEVICE_BT;
+        } else if (inputDevice & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
+            if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
+                (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
+                LOGI("Routing audio to Wired Headset and Speaker\n");
+                sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
+                audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
             } else {
-                if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-                    LOGI("Routing audio to Speakerphone\n");
-                    sndDevice = SND_DEVICE_SPEAKER;
-                    audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
-                } else {
-                    LOGI("Routing audio to Handset\n");
-                    sndDevice = SND_DEVICE_HANDSET;
-                }
+                LOGI("Routing audio to Wired Headset\n");
+                sndDevice = SND_DEVICE_HEADSET;
+            }
+        } else {
+            if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
+                LOGI("Routing audio to Speakerphone\n");
+                sndDevice = SND_DEVICE_SPEAKER;
+                audProcess = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE);
+            } else {
+                LOGI("Routing audio to Handset\n");
+                sndDevice = SND_DEVICE_HANDSET;
             }
         }
-        // if inputDevice == 0, restore output routing
     }
+    // if inputDevice == 0, restore output routing
 
     if (sndDevice == -1) {
         if (outputDevices & (outputDevices - 1)) {
@@ -643,6 +642,19 @@ uint32_t AudioHardware::getInputSampleRate(uint32_t sampleRate)
     return inputSamplingRates[i-1];
 }
 
+// getActiveInput_l() must be called with mLock held
+AudioHardware::AudioStreamInMSM72xx *AudioHardware::getActiveInput_l()
+{
+    for (size_t i = 0; i < mInputs.size(); i++) {
+        // return first input found not being in standby mode
+        // as only one input can be in this state
+        if (mInputs[i]->state() > AudioStreamInMSM72xx::AUDIO_INPUT_CLOSED) {
+            return mInputs[i];
+        }
+    }
+
+    return NULL;
+}
 // ----------------------------------------------------------------------------
 
 AudioHardware::AudioStreamOutMSM72xx::AudioStreamOutMSM72xx() :
@@ -824,7 +836,7 @@ status_t AudioHardware::AudioStreamOutMSM72xx::setParameters(const String8& keyV
     if (param.getInt(key, device) == NO_ERROR) {
         mDevices = device;
         LOGV("set output routing %x", mDevices);
-        status = mHardware->doRouting(NULL);
+        status = mHardware->doRouting();
         param.remove(key);
     }
 
@@ -1008,11 +1020,15 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
     }
 
     if (mState < AUDIO_INPUT_STARTED) {
+        mState = AUDIO_INPUT_STARTED;
+        // force routing to input device
+        mHardware->clearCurDevice();
+        mHardware->doRouting();
         if (ioctl(mFd, AUDIO_START, 0)) {
             LOGE("Error starting record");
+            standby();
             return -1;
         }
-        mState = AUDIO_INPUT_STARTED;
     }
 
     while (count) {
@@ -1031,15 +1047,17 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 
 status_t AudioHardware::AudioStreamInMSM72xx::standby()
 {
-    if (!mHardware) return -1;
     if (mState > AUDIO_INPUT_CLOSED) {
         if (mFd >= 0) {
             ::close(mFd);
             mFd = -1;
         }
-        //mHardware->checkMicMute();
         mState = AUDIO_INPUT_CLOSED;
     }
+    if (!mHardware) return -1;
+    // restore output routing if necessary
+    mHardware->clearCurDevice();
+    mHardware->doRouting();
     return NO_ERROR;
 }
 
@@ -1083,7 +1101,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
             status = BAD_VALUE;
         } else {
             mDevices = device;
-            status = mHardware->doRouting(this);
+            status = mHardware->doRouting();
         }
         param.remove(key);
     }

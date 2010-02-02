@@ -139,7 +139,8 @@ public:
     virtual    void        closeOutputStream(AudioStreamOut* out);
     virtual    void        closeInputStream(AudioStreamIn* in);
 
-    virtual size_t getInputBufferSize(uint32_t sampleRate, int format, int channelCount);
+    virtual    size_t      getInputBufferSize(uint32_t sampleRate, int format, int channelCount);
+               void        clearCurDevice() { mCurSndDevice = -1; }
 
 protected:
     virtual status_t    dump(int fd, const Vector<String16>& args);
@@ -152,7 +153,8 @@ private:
     status_t    dumpInternals(int fd, const Vector<String16>& args);
     uint32_t    getInputSampleRate(uint32_t sampleRate);
     bool        checkOutputStandby();
-    status_t    doRouting(AudioStreamInMSM72xx *input);
+    status_t    doRouting();
+    AudioStreamInMSM72xx*   getActiveInput_l();
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
     public:
@@ -215,6 +217,7 @@ private:
         virtual status_t    setParameters(const String8& keyValuePairs);
         virtual String8     getParameters(const String8& keys);
                 uint32_t    devices() { return mDevices; }
+                int         state() const { return mState; }
 
     private:
                 AudioHardware* mHardware;
