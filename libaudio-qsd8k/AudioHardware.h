@@ -73,6 +73,8 @@ namespace android {
 #define FM_SPKR	                   ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO
 #define SPKR_PHONE_HEADSET_STEREO  ADSP_AUDIO_DEVICE_ID_SPKR_PHONE_MONO_W_MONO_HEADSET
 
+#define ACDB_ID_HAC_HANDSET_MIC 107
+#define ACDB_ID_HAC_HANDSET_SPKR 207
 #define ACDB_ID_EXT_MIC_REC 307
 #define ACDB_ID_HEADSET_PLAYBACK 407
 #define ACDB_ID_HEADSET_RINGTONE_PLAYBACK 408
@@ -80,6 +82,7 @@ namespace android {
 #define ACDB_ID_CAMCORDER   508
 #define ACDB_ID_INT_MIC_VR  509
 #define ACDB_ID_SPKR_PLAYBACK 607
+#define ACDB_ID_ALT_SPKR_PLAYBACK 609
 
 #define SAMP_RATE_INDX_8000	0
 #define SAMP_RATE_INDX_11025	1
@@ -217,11 +220,13 @@ private:
     status_t    set_mRecordState(bool onoff);
     status_t    doA1026_init();
     status_t    get_snd_dev();
+    status_t    get_batt_temp(int *batt_temp);
     status_t    doAudience_A1026_Control(int Mode, bool Record, uint32_t Routes);
     status_t    doRouting(AudioStreamInMSM72xx *input);
     status_t    updateACDB();
     uint32_t    getACDB(int mode, int device);
     status_t    updateBT();
+    status_t    do_tpa2018_control(int mode);
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
     public:
@@ -304,6 +309,7 @@ private:
             bool        mInit;
             bool        mMicMute;
             bool        mBluetoothNrec;
+            bool        mHACSetting;
             uint32_t    mBluetoothIdTx;
             uint32_t    mBluetoothIdRx;
             AudioStreamOutMSM72xx*  mOutput;
