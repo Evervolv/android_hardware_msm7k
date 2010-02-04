@@ -93,7 +93,8 @@ const uint32_t AudioHardware::inputSamplingRates[] = {
 };
 
 // ID string for audio wakelock
-static const char kOutputWakelockStr[] = "AudioHardwareQSD";
+static const char kOutputWakelockStr[] = "AudioHardwareQSDOut";
+static const char kInputWakelockStr[] = "AudioHardwareQSDIn";
 
 // ----------------------------------------------------------------------------
 
@@ -816,9 +817,9 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
         }
     }
 
-    if (mMode == AudioSystem::MODE_IN_CALL
-            && (device == (int) SND_DEVICE_BT
-            || device == (int) SND_DEVICE_BT_EC_OFF)) {
+
+    if (device == (int) SND_DEVICE_BT
+            || device == (int) SND_DEVICE_BT_EC_OFF) {
         if (mBluetoothIdTx != 0) {
             rx_acdb_id = mBluetoothIdRx;
             tx_acdb_id = mBluetoothIdTx;
@@ -828,8 +829,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
             tx_acdb_id = mBTEndpoints[0].tx;
             LOGD("Update ACDB ID to default BT setting\n");
         }
-    } else if (mMode == AudioSystem::MODE_IN_CALL
-            && device == (int) SND_DEVICE_CARKIT) {
+    } else if (device == (int) SND_DEVICE_CARKIT) {
         if (mBluetoothIdTx != 0) {
             rx_acdb_id = mBluetoothIdRx;
             tx_acdb_id = mBluetoothIdTx;
@@ -1276,7 +1276,17 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         }
     }
     else {
-        new_pathid = A1026_PATH_SUSPEND;
+        switch (Routes) {
+        case SND_DEVICE_BT:
+        case SND_DEVICE_BT_EC_OFF:
+        case SND_DEVICE_CARKIT:
+            new_pathid = A1026_PATH_RECORD_BT; /* BT MIC */
+            LOGV("A1026 control: new path is A1026_PATH_RECORD_BT");
+            break;
+        default:
+            new_pathid = A1026_PATH_SUSPEND;
+            break;
+        }
     }
 
     if (old_pathid != new_pathid) {
@@ -1565,7 +1575,7 @@ status_t AudioHardware::AudioStreamOutMSM72xx::set(
 
 AudioHardware::AudioStreamOutMSM72xx::~AudioStreamOutMSM72xx()
 {
-    if (mFd >= 0) close(mFd);
+    standby();
 }
 
 ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t bytes)
@@ -1627,7 +1637,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
             goto Error;
         }
 
-        LOGV("acquire wakelock");
+        LOGV("acquire output wakelock");
         acquire_wake_lock(PARTIAL_WAKE_LOCK, kOutputWakelockStr);
         mStandby = false;
     }
@@ -1663,7 +1673,7 @@ status_t AudioHardware::AudioStreamOutMSM72xx::standby()
     if (!mStandby && mFd >= 0) {
         ::close(mFd);
         mFd = -1;
-        LOGV("release wakelock");
+        LOGV("release output wakelock");
         release_wake_lock(kOutputWakelockStr);
     }
     mStandby = true;
@@ -1884,6 +1894,8 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
         mHardware->clearCurDevice();
         mHardware->doRouting();
 
+        LOGV("acquire input wakelock");
+        acquire_wake_lock(PARTIAL_WAKE_LOCK, kInputWakelockStr);
         uint32_t acdb_id = mHardware->getACDB(MOD_REC, mHardware->get_snd_dev());
         if (ioctl(mFd, AUDIO_START, &acdb_id)) {
             LOGE("Error starting record");
@@ -1914,6 +1926,8 @@ status_t AudioHardware::AudioStreamInMSM72xx::standby()
             mFd = -1;
         }
         mState = AUDIO_INPUT_CLOSED;
+        LOGV("release input wakelock");
+        release_wake_lock(kInputWakelockStr);
     }
 
     if (!mHardware) return -1;
