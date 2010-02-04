@@ -1244,37 +1244,17 @@ status_t AudioHardware::doRouting()
 
     if (inputDevice != 0) {
         LOGI("do input routing device %x\n", inputDevice);
-        if (inputDevice != 0) {
-            if (inputDevice & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
-                LOGI("Routing audio to Bluetooth PCM\n");
-                sndDevice = SND_DEVICE_BT;
-            } else if (inputDevice & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT) {
-                LOGI("Routing audio to Bluetooth car kit\n");
-                sndDevice = SND_DEVICE_CARKIT;
-            } else if (inputDevice & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
-                if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
-                        (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
-                            LOGI("Routing audio to Wired Headset and Speaker\n");
-                            sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
-                } else {
-                    LOGI("Routing audio to Wired Headset\n");
-                    sndDevice = SND_DEVICE_HEADSET;
-                }
-            } else if (inputDevice & AudioSystem::DEVICE_IN_BACK_MIC) {
-                if (outputDevices & (AudioSystem:: DEVICE_OUT_WIRED_HEADSET) &&
-                       (outputDevices & AudioSystem:: DEVICE_OUT_SPEAKER)) {
-                    LOGI("Routing audio to Wired Headset and Speaker with back mic\n");
-                    sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC;
-                } else if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-                    LOGI("Routing audio to Speakerphone with back mic\n");
-                    sndDevice = SND_DEVICE_SPEAKER_BACK_MIC;
-                } else if (outputDevices == AudioSystem::DEVICE_OUT_EARPIECE) {
-                    LOGI("Routing audio to Handset with back mic\n");
-                    sndDevice = SND_DEVICE_HANDSET_BACK_MIC;
-                } else {
-                    LOGI("Routing audio to Headset with back mic\n");
-                    sndDevice = SND_DEVICE_NO_MIC_HEADSET_BACK_MIC;
-                }
+        if (inputDevice & AudioSystem::DEVICE_IN_BLUETOOTH_SCO_HEADSET) {
+            LOGI("Routing audio to Bluetooth PCM\n");
+            sndDevice = SND_DEVICE_BT;
+        } else if (inputDevice & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT) {
+            LOGI("Routing audio to Bluetooth car kit\n");
+            sndDevice = SND_DEVICE_CARKIT;
+        } else if (inputDevice & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
+            if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
+                    (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
+                        LOGI("Routing audio to Wired Headset and Speaker\n");
+                        sndDevice = SND_DEVICE_HEADSET_AND_SPEAKER;
             } else {
                 LOGI("Routing audio to Wired Headset\n");
                 sndDevice = SND_DEVICE_HEADSET;
