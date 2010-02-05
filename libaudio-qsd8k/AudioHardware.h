@@ -306,6 +306,13 @@ private:
                 uint32_t    mDevices;
     };
 
+            enum tty_modes {
+                TTY_MODE_OFF,
+                TTY_MODE_FULL,
+                TTY_MODE_VCO,
+                TTY_MODE_HCO
+            };
+
             static const uint32_t inputSamplingRates[];
     Mutex       mA1026Lock;
     bool        mA1026Init;
@@ -328,6 +335,7 @@ private:
      friend class AudioStreamInMSM72xx;
             Mutex       mLock;
             uint32_t        mRoutes[AudioSystem::NUM_MODES];
+            int         mTTYMode;
 };
 
 // ----------------------------------------------------------------------------
