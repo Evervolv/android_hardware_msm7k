@@ -797,29 +797,23 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
         if (mBluetoothIdTx != 0) {
             rx_acdb_id = mBluetoothIdRx;
             tx_acdb_id = mBluetoothIdTx;
+        } else {
+            /* use default BT entry defined in AudioBTID.csv */
+            rx_acdb_id = mBTEndpoints[0].rx;
+            tx_acdb_id = mBTEndpoints[0].tx;
+            LOGD("Update ACDB ID to default BT setting\n");
         }
-// FIXME: temporarily comment out code that causes kernel crash reported in
-// issue 2419260 until HTC provides a real fix
-//        else {
-//                /* use default BT entry defined in AudioBTID.csv */
-//                rx_acdb_id = mBTEndpoints[0].rx;
-//                tx_acdb_id = mBTEndpoints[0].tx;
-//                LOGD("Update ACDB ID to default BT setting\n");
-//            }
     } else if (mMode == AudioSystem::MODE_IN_CALL
             && device == (int) SND_DEVICE_CARKIT) {
         if (mBluetoothIdTx != 0) {
             rx_acdb_id = mBluetoothIdRx;
             tx_acdb_id = mBluetoothIdTx;
+        } else {
+            /* use default carkit entry defined in AudioBTID.csv */
+            rx_acdb_id = mBTEndpoints[1].rx;
+            tx_acdb_id = mBTEndpoints[1].tx;
+            LOGD("Update ACDB ID to default carkit setting");
         }
-// FIXME: temporarily comment out code that causes kernel crash reported in
-// issue 2419260 until HTC provides a real fix
-//        else {
-//            /* use default carkit entry defined in AudioBTID.csv */
-//            rx_acdb_id = mBTEndpoints[1].rx;
-//            tx_acdb_id = mBTEndpoints[1].tx;
-//            LOGD("Update ACDB ID to default carkit setting");
-//        }
     } else if (mMode == AudioSystem::MODE_IN_CALL && hac_enable && mHACSetting) {
         LOGE("Update acdb id to hac profile.");
         rx_acdb_id = ACDB_ID_HAC_HANDSET_SPKR;
