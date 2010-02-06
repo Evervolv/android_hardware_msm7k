@@ -585,15 +585,17 @@ status_t AudioHardware::setVoiceVolume(float v)
         v = 1.0;
     }
 
-    if (mHACSetting && hac_enable)
-        v = 1.0;
-
     int vol = lrint(v * VOICE_VOLUME_MAX);
-    LOGD("setVoiceVolume(%f)\n", v);
-    LOGI("Setting in-call volume to %d (available range is 0 to %d)\n", vol, VOICE_VOLUME_MAX);
 
     Mutex::Autolock lock(mLock);
-    set_volume_rpc(vol); //always set current device
+    if (mHACSetting && hac_enable && mCurSndDevice == (int) SND_DEVICE_HANDSET) {
+        LOGD("HAC enable: Setting in-call volume to maximum.\n");
+        set_volume_rpc(VOICE_VOLUME_MAX);
+    } else {
+        LOGD("setVoiceVolume(%f)\n", v);
+        LOGI("Setting in-call volume to %d (available range is 0 to %d)\n", vol, VOICE_VOLUME_MAX);
+        set_volume_rpc(vol); //always set current device
+    }
     mVoiceVolume = vol;
     return NO_ERROR;
 }
@@ -849,7 +851,7 @@ status_t AudioHardware::get_batt_temp(int *batt_temp)
 {
     int fd, len;
     const char *fn =
-        "/sys/devices/platform/rs30100001:00000000/power_supply/battery/batt_temp";
+            "/sys/devices/platform/ds2784-battery/power_supply/battery/temp";
     char get_batt_temp[6] = { 0 };
 
     if ((fd = open(fn, O_RDONLY)) < 0) {
@@ -1391,7 +1393,12 @@ status_t AudioHardware::doRouting()
         ret = doAudioRouteOrMute(sndDevice);
         mCurSndDevice = sndDevice;
         if (mMode == AudioSystem::MODE_IN_CALL) {
-            set_volume_rpc(mVoiceVolume);
+            if (mHACSetting && hac_enable && mCurSndDevice == (int) SND_DEVICE_HANDSET) {
+                LOGD("HAC enable: Setting in-call volume to maximum.\n");
+                set_volume_rpc(VOICE_VOLUME_MAX);
+            } else {
+                set_volume_rpc(mVoiceVolume);
+            }
         }
     }
 
