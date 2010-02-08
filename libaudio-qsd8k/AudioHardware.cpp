@@ -465,6 +465,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
                     LOGE("Failed to set noise suppression %s", value.string());
                 }
                 close(fd_a1026);
+                fd_a1026 = -1;
                 mA1026Lock.unlock();
             }
         } else {
@@ -895,6 +896,9 @@ status_t AudioHardware::get_batt_temp(int *batt_temp)
     return NO_ERROR;
 }
 
+/*
+ * Note: upon exiting doA1026_init(), fd_a1026 will be -1
+ */
 status_t AudioHardware::doA1026_init(void)
 {
     struct a1026img fwimg;
@@ -1284,11 +1288,18 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
             LOGE("A1026 do hard reset to recover from error!\n");
             rc = doA1026_init(); /* A1026 needs to do hard reset! */
             if (!rc) {
-                rc = ioctl(fd_a1026, A1026_SET_CONFIG, &new_pathid);
-                if (!rc)
-                    old_pathid = new_pathid;
-                else
-                    LOGE("A1026 Fatal Error!\n");
+                /* after doA1026_init(), fd_a1026 is -1*/
+                fd_a1026 = open("/dev/audience_a1026", O_RDWR);
+                if (fd_a1026 < 0) {
+                    LOGE("A1026 Fatal Error: unable to open A1026 after hard reset\n");
+                } else {
+                    rc = ioctl(fd_a1026, A1026_SET_CONFIG, &new_pathid);
+                    if (!rc) {
+                        old_pathid = new_pathid;
+                    } else {
+                        LOGE("A1026 Fatal Error: unable to A1026_SET_CONFIG after hard reset\n");
+                    }
+                }
             } else
                 LOGE("A1026 Fatal Error: Re-init A1026 Failed\n");
         }
