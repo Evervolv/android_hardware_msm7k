@@ -842,7 +842,9 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
             tx_acdb_id = mBTEndpoints[1].tx;
             LOGD("Update ACDB ID to default carkit setting");
         }
-    } else if (mMode == AudioSystem::MODE_IN_CALL && hac_enable && mHACSetting) {
+    } else if (mMode == AudioSystem::MODE_IN_CALL
+               && hac_enable && mHACSetting &&
+               device == (int) SND_DEVICE_HANDSET) {
         LOGE("Update acdb id to hac profile.");
         rx_acdb_id = ACDB_ID_HAC_HANDSET_SPKR;
         tx_acdb_id = ACDB_ID_HAC_HANDSET_MIC;
