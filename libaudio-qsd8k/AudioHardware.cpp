@@ -1151,8 +1151,6 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_FM_HEADSET:
 	        case SND_DEVICE_FM_SPEAKER:
 	        case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
-	        case SND_DEVICE_TTY_HCO:
-	        case SND_DEVICE_TTY_FULL:
 	            new_pathid = A1026_PATH_INCALL_HEADSET;
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
@@ -1167,6 +1165,11 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_CARKIT:
 	            new_pathid = A1026_PATH_INCALL_BT;
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_BT");
+	            break;
+	        case SND_DEVICE_TTY_HCO:
+	        case SND_DEVICE_TTY_FULL:
+	            new_pathid = A1026_PATH_INCALL_TTY;
+	            LOGV("A1026 control: new path is A1026_PATH_INCALL_TTY");
 	            break;
 	        default:
 	            break;
@@ -1188,8 +1191,6 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_HEADSET_AND_SPEAKER:
 	        case SND_DEVICE_FM_HEADSET:
 	        case SND_DEVICE_FM_SPEAKER:
-	        case SND_DEVICE_TTY_HCO:
-	        case SND_DEVICE_TTY_FULL:
 	            new_pathid = A1026_PATH_INCALL_HEADSET; /* NS disable, Headset MIC */
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
@@ -1202,6 +1203,11 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_CARKIT:
 	            new_pathid = A1026_PATH_INCALL_BT; /* QCOM NS, BT MIC */
 	            LOGV("A1026 control: new path is A1026_PATH_INCALL_BT");
+	            break;
+	        case SND_DEVICE_TTY_HCO:
+	        case SND_DEVICE_TTY_FULL:
+	            new_pathid = A1026_PATH_INCALL_TTY;
+	            LOGV("A1026 control: new path is A1026_PATH_INCALL_TTY");
 	            break;
 	        default:
 	            break;
