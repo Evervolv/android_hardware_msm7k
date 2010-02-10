@@ -15,7 +15,7 @@ LOCAL_CFLAGS+=-DDLOPEN_LIBQCAMERA=$(DLOPEN_LIBQCAMERA)
 
 LOCAL_SRC_FILES:= QualcommCameraHardware.cpp
 
-LOCAL_SHARED_LIBRARIES:= libutils libbinder libui liblog
+LOCAL_SHARED_LIBRARIES:= libutils libbinder libui liblog libcamera_client
 ifneq ($(DLOPEN_LIBQCAMERA),1)
 LOCAL_SHARED_LIBRARIES+= liboemcamera
 else
