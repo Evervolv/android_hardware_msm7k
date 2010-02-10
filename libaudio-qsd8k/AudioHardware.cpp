@@ -813,7 +813,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
     if (support_a1026 == 1)
             doAudience_A1026_Control(mMode, mRecordState, device);
 
-    if (device == (uint32_t)SND_DEVICE_BT || device == (uint32_t)SND_DEVICE_CARKIT) {
+    if (device == (uint32_t)SND_DEVICE_BT) {
         if (!mBluetoothNrec) {
             device = SND_DEVICE_BT_EC_OFF;
         }
@@ -1013,7 +1013,7 @@ uint32_t AudioHardware::getACDB(int mode, int device)
                 acdb_id = ACDB_ID_SPKR_PLAYBACK;
                 if(alt_enable) {
                     LOGD("Enable ALT for speaker\n");
-                    if (get_batt_temp(&batt_temp)) {
+                    if (get_batt_temp(&batt_temp) == NO_ERROR) {
                         if (batt_temp < 50)
                             acdb_id = ACDB_ID_ALT_SPKR_PLAYBACK;
                         LOGD("ALT batt temp = %d\n", batt_temp);
