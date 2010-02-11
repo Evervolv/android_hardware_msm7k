@@ -1313,7 +1313,9 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         }
     }
 
-    close(fd_a1026);
+    if (fd_a1026 >= 0) {
+        close(fd_a1026);
+    }
     fd_a1026 = -1;
     mA1026Lock.unlock();
 
