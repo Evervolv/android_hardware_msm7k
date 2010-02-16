@@ -218,4 +218,21 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
     return device;
 }
 
+float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t output, uint32_t device)
+{
+    // force volume on A2DP output to maximum if playing through car dock speakers
+    // as volume is applied on the car dock and controlled via car dock keys.
+#ifdef WITH_A2DP
+    if (output == mA2dpOutput &&
+        mForceUse[AudioSystem::FOR_DOCK] == AudioSystem::FORCE_BT_CAR_DOCK) {
+        return 1.0;
+    }
+#endif
+
+    return AudioPolicyManagerBase::computeVolume(stream, index, output, device);
+}
+
+
+
+
 }; // namespace android
