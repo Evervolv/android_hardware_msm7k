@@ -701,7 +701,7 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall, uint32_t r
         LOGD("TTY FULL headset");
     } else if (device == SND_DEVICE_TTY_VCO) {
         out_device = TTY_HEADSET_SPKR;
-        mic_device = HANDSET_MIC;
+        mic_device = SPKR_PHONE_MIC;
         LOGD("TTY VCO headset");
     } else if (device == SND_DEVICE_TTY_HCO) {
         out_device = SPKR_PHONE_MONO;
