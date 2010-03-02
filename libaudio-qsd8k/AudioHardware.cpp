@@ -733,21 +733,12 @@ Incall:
                 return -1;
             }
         }
-        if (rx_acdb_id == ACDB_ID_HAC_HANDSET_SPKR &&
-            tx_acdb_id == ACDB_ID_HAC_HANDSET_MIC) {
-            path[0] = rx_acdb_id;
-            path[1] = tx_acdb_id;
-            if (ioctl(fd, AUDIO_START_VOICE, &path)) {
-                LOGE("Cannot start voice");
-                close(fd);
-                return -1;
-            }
-        } else {
-            if (ioctl(fd, AUDIO_START_VOICE, NULL)) {
-                LOGE("Cannot start voice");
-                close(fd);
-                return -1;
-            }
+        path[0] = rx_acdb_id;
+        path[1] = tx_acdb_id;
+        if (ioctl(fd, AUDIO_START_VOICE, &path)) {
+            LOGE("Cannot start voice");
+            close(fd);
+            return -1;
         }
         LOGD("Voice Started!!");
         voice_started = 1;
