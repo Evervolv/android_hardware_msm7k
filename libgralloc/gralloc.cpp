@@ -464,6 +464,13 @@ static int gralloc_alloc(alloc_device_t* dev,
         default:
             return -EINVAL;
     }
+
+    if (usage & (GRALLOC_USAGE_HW_RENDER|GRALLOC_USAGE_HW_TEXTURE)) {
+        // the GPU can only deal with surfaces multiple of 16 pixels
+        const int gpuAlign = 16;
+        w = (w + (gpuAlign-1)) & ~(gpuAlign-1);
+    }
+
     size_t bpr = (w*bpp + (align-1)) & ~(align-1);
     size = bpr * h;
     stride = bpr / bpp;
