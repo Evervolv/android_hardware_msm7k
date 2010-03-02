@@ -310,12 +310,18 @@ status_t AudioHardware::setMode(int mode)
     if (support_tpa2018d1)
         do_tpa2018_control(mode);
 
+    int prevMode = mMode;
     status_t status = AudioHardwareBase::setMode(mode);
     if (status == NO_ERROR) {
         // make sure that doAudioRouteOrMute() is called by doRouting()
-        // even if the new device selected is the same as current one.
-        clearCurDevice();
+        // when entering or exiting in call mode even if the new device
+        // selected is the same as current one.
+        if (((prevMode != AudioSystem::MODE_IN_CALL) && (mMode == AudioSystem::MODE_IN_CALL)) ||
+            ((prevMode == AudioSystem::MODE_IN_CALL) && (mMode != AudioSystem::MODE_IN_CALL))) {
+            clearCurDevice();
+        }
     }
+
     return status;
 }
 
