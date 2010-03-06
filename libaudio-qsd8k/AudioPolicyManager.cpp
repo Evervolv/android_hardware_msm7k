@@ -155,22 +155,27 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
 
     case STRATEGY_MEDIA: {
         uint32_t device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_AUX_DIGITAL;
-        if (device2 == 0) {
-            // if docked to a BT dock, give priority to the wired accessories
-            if (mForceUse[AudioSystem::FOR_DOCK] != AudioSystem::FORCE_NONE) {
-                device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
-                if (device2 == 0) {
-                    device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
-                }
 #ifdef WITH_A2DP
-                // play ringtone over speaker if in car dock because A2DP is suspended in this case
-                if (device2 == 0 && strategy == STRATEGY_SONIFICATION &&
-                    mA2dpOutput != 0 && mScoDeviceAddress == mA2dpDeviceAddress &&
+        if (mA2dpOutput != 0) {
+            if (device2 == 0) {
+                // play ringtone over speaker (or speaker + headset) if in car dock
+                // because A2DP is suspended in this case
+                if (mForceUse[AudioSystem::FOR_DOCK] == AudioSystem::FORCE_BT_CAR_DOCK &&
+                    strategy == STRATEGY_SONIFICATION &&
                     mPhoneState == AudioSystem::MODE_RINGTONE) {
-                    device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
+                    device2 = mAvailableOutputDevices &
+                              (AudioSystem::DEVICE_OUT_SPEAKER |
+                               AudioSystem::DEVICE_OUT_WIRED_HEADPHONE |
+                               AudioSystem::DEVICE_OUT_WIRED_HEADSET);
                 }
-#endif
             }
+        }
+#endif
+        if (device2 == 0) {
+            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
+        }
+        if (device2 == 0) {
+            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
         }
 #ifdef WITH_A2DP
         if (mA2dpOutput != 0) {
@@ -185,12 +190,6 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
             }
         }
 #endif
-        if (device2 == 0) {
-            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE;
-        }
-        if (device2 == 0) {
-            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET;
-        }
         if (device2 == 0) {
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
         }
