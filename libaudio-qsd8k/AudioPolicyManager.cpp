@@ -25,6 +25,8 @@ namespace android {
 
 // Max volume for streams when playing over bluetooth SCO device while in call: -18dB
 #define IN_CALL_SCO_VOLUME_MAX  0.126
+// Min music volume for 3.5mm jack in car dock: -8dB
+#define CAR_DOCK_MUSIC_MINI_JACK_VOLUME_MIN 0.4
 
 // ----------------------------------------------------------------------------
 // AudioPolicyManager implementation for qsd8k platform
@@ -242,8 +244,16 @@ float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t
         }
     }
 
-    return volume;
+    // in car dock: when using the 3.5mm jack to play media, set a fixed volume as access to the
+    // physical volume keys is blocked by the car dock frame.
+    if ((mForceUse[AudioSystem::FOR_DOCK] == AudioSystem::FORCE_BT_CAR_DOCK) &&
+            (stream == AudioSystem::MUSIC) &&
+            (device & (AudioSystem::DEVICE_OUT_WIRED_HEADPHONE |
+                AudioSystem::DEVICE_OUT_WIRED_HEADSET))) {
+        volume = CAR_DOCK_MUSIC_MINI_JACK_VOLUME_MIN;
+    }
 
+    return volume;
 }
 
 
