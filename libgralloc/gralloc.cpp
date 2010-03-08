@@ -445,7 +445,6 @@ static int gralloc_alloc(alloc_device_t* dev,
 
     size_t size, stride;
 
-    int align = 4;
     int bpp = 0;
     switch (format) {
         case HAL_PIXEL_FORMAT_RGBA_8888:
@@ -465,15 +464,17 @@ static int gralloc_alloc(alloc_device_t* dev,
             return -EINVAL;
     }
 
-    if (usage & (GRALLOC_USAGE_HW_RENDER|GRALLOC_USAGE_HW_TEXTURE)) {
+    if (usage & GRALLOC_USAGE_HW_RENDER) {
         // the GPU can only deal with surfaces multiple of 16 pixels
         const int gpuAlign = 16;
-        w = (w + (gpuAlign-1)) & ~(gpuAlign-1);
+        stride = (w + (gpuAlign-1)) & ~(gpuAlign-1);
+        size = stride * h * bpp;
+    } else {
+        const int align = 4;
+        size_t bpr = (w*bpp + (align-1)) & ~(align-1);
+        size = bpr * h;
+        stride = bpr / bpp;
     }
-
-    size_t bpr = (w*bpp + (align-1)) & ~(align-1);
-    size = bpr * h;
-    stride = bpr / bpp;
 
     int err;
     if (usage & GRALLOC_USAGE_HW_FB) {
