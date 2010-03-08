@@ -51,6 +51,8 @@
 extern XDR *xdr_init_common(const char *name, int is_client);
 extern void xdr_destroy_common(XDR *xdr);
 extern int r_control(int handle, const uint32 cmd, void *arg);
+extern void grabPartialWakeLock();
+extern void releaseWakeLock();
 
 #include <stdio.h>
 #include <errno.h>
@@ -117,6 +119,7 @@ static void* svc_context(void *__u)
             continue;
         }
         if (n) {
+            grabPartialWakeLock();
             for (n = 0; n <= xprt->max_fd; n++) {
                 if (FD_ISSET(n, &rfds)) {
                     /* the file descriptor points to the service instance; we
@@ -132,6 +135,7 @@ static void* svc_context(void *__u)
                         }
                 } /* if fd is set */
             } /* for each fd */
+            releaseWakeLock();
         }
     }
     D("RPC-server thread exiting!\n");
