@@ -10,6 +10,20 @@
 #include <string.h>
 #include <errno.h>
 
+#include <hardware_legacy/power.h>
+
+#define ANDROID_WAKE_LOCK_NAME "rpc-interface"
+
+void
+grabPartialWakeLock() {
+    acquire_wake_lock(PARTIAL_WAKE_LOCK, ANDROID_WAKE_LOCK_NAME);
+}
+
+void
+releaseWakeLock() {
+    release_wake_lock(ANDROID_WAKE_LOCK_NAME);
+}
+
 struct CLIENT {
     xdr_s_type *xdr;
     struct CLIENT *next;
@@ -154,6 +168,8 @@ static void *cb_context(void *__u)
                "no RPC transport!\n",
                client->xdr->x_prog,
                client->xdr->x_vers);
+
+        releaseWakeLock();
     }
     pthread_mutex_unlock(&client->wait_cb_lock);
 
@@ -204,6 +220,7 @@ static void *rx_context(void *__u __attribute__((unused)))
                     }
                     D("%08x:%08x reading data.\n",
                       client->xdr->x_prog, client->xdr->x_vers);
+                    grabPartialWakeLock();
                     client->xdr->xops->read(client->xdr);
                     client->input_xdr_busy = 1;
                     pthread_mutex_unlock(&client->input_xdr_lock);
@@ -222,6 +239,8 @@ static void *rx_context(void *__u __attribute__((unused)))
                           client->xdr->x_vers);
                         pthread_cond_signal(&client->wait_reply);
                         pthread_mutex_unlock(&client->wait_reply_lock);
+
+                        releaseWakeLock();
                     }
                     else {
                         pthread_mutex_lock(&client->wait_cb_lock);
@@ -494,14 +513,12 @@ bool_t xdr_recv_reply_header (xdr_s_type *xdr, rpc_reply_header *reply)
 
     switch ((*reply).stat) {
     case RPC_MSG_ACCEPTED:
-        if (!xdr_recv_accepted_reply_header(xdr, &reply->u.ar)) {
+        if (!xdr_recv_accepted_reply_header(xdr, &reply->u.ar))
             return FALSE;
-	}
         break;
     case RPC_MSG_DENIED:
-        if (!xdr_recv_denied_reply(xdr, &reply->u.dr)) {
+        if (!xdr_recv_denied_reply(xdr, &reply->u.dr))
             return FALSE;
-	}
         break;
     default:
         return FALSE;
