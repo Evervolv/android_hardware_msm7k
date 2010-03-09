@@ -23,6 +23,9 @@
 namespace android {
 
 
+// Max volume for streams when playing over bluetooth SCO device while in call: -18dB
+#define IN_CALL_SCO_VOLUME_MAX  0.126
+
 // ----------------------------------------------------------------------------
 // AudioPolicyManager implementation for qsd8k platform
 // Common audio policy manager code is implemented in AudioPolicyManagerBase class
@@ -228,7 +231,19 @@ float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t
     }
 #endif
 
-    return AudioPolicyManagerBase::computeVolume(stream, index, output, device);
+    float volume = AudioPolicyManagerBase::computeVolume(stream, index, output, device);
+
+    // limit stream volume when in call and playing over bluetooth SCO device to
+    // avoid saturation
+    if (mPhoneState == AudioSystem::MODE_IN_CALL && AudioSystem::isBluetoothScoDevice((AudioSystem::audio_devices)device)) {
+        if (volume > IN_CALL_SCO_VOLUME_MAX) {
+            LOGV("computeVolume limiting SYSTEM volume %f to %f",volume, IN_CALL_SCO_VOLUME_MAX);
+            volume = IN_CALL_SCO_VOLUME_MAX;
+        }
+    }
+
+    return volume;
+
 }
 
 
