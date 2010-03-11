@@ -465,9 +465,11 @@ static int gralloc_alloc(alloc_device_t* dev,
     }
 
     if (usage & GRALLOC_USAGE_HW_RENDER) {
-        // the GPU can only deal with surfaces multiple of 16 pixels
-        const int gpuAlign = 16;
-        stride = (w + (gpuAlign-1)) & ~(gpuAlign-1);
+        /* buffers MUST be aligned to the NEXT 8 pixels multiple any other
+         * alignments will fail do to assumptions in the driver */
+        const int pixelAlignment = 8;
+        const int mask = pixelAlignment - 1;
+        stride = (w + mask) & ~mask;
         size = stride * h * bpp;
     } else {
         const int align = 4;
