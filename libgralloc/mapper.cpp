@@ -87,7 +87,7 @@ static int gralloc_unmap(gralloc_module_t const* module,
         base = (void*)(intptr_t(base) - hnd->offset);
         size += hnd->offset;
 #endif
-        //LOGD("unmapping from %p, size=%d", base, size);
+        //LOGD("unmapping from %p, size=%d, flags=%08x", base, size, hnd->flags);
         if (munmap(base, size) < 0) {
             LOGE("Could not unmap %s", strerror(errno));
         }
@@ -112,6 +112,7 @@ int gralloc_register_buffer(gralloc_module_t const* module,
     int err = 0;
     private_handle_t* hnd = (private_handle_t*)handle;
     if (hnd->pid != getpid()) {
+        hnd->base = NULL;
         if (!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_GPU)) {
             void *vaddr;
             err = gralloc_map(module, handle, &vaddr);
