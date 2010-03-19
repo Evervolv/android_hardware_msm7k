@@ -48,6 +48,7 @@ struct private_module_t {
     unsigned long master_phys;
     int gpu;
     void* gpu_base;
+    int fb_map_offset;
 
     struct fb_var_screeninfo info;
     struct fb_fix_screeninfo finfo;
@@ -82,7 +83,7 @@ struct private_handle_t {
 
     // FIXME: the attributes below should be out-of-line
     int     base;
-    int     phys; // The physical address of that chunk of memory. If using ashmem, set to 0 They don't care
+    int     map_offset;
     int     pid;
 
 #ifdef __cplusplus

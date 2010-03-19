@@ -44,6 +44,9 @@
 
 // NOTE: must be the same than in oem.h
 #define ALLOCATORREGION_RESERVED_SIZE           (1200<<10)
+#define FB_ARENA                                HW3D_EBI
+
+
 
 static SimpleBestFitAllocator sAllocator;
 static SimpleBestFitAllocator sAllocatorGPU(ALLOCATORREGION_RESERVED_SIZE);
@@ -116,7 +119,8 @@ struct private_module_t HAL_MODULE_INFO_SYM = {
     pmem_master_base: 0,
     master_phys: 0,
     gpu: -1,
-    gpu_base: 0
+    gpu_base: 0,
+    fb_map_offset: 0
 };
 
 /*****************************************************************************/
@@ -263,9 +267,9 @@ static int init_gpu_area_locked(private_module_t* m)
                     regions[HW3D_REGS].len,
                     regions[HW3D_REGS].phys);
 
-            void* base = mmap(0, regions[HW3D_EBI].len,
+            void* base = mmap(0, ALLOCATORREGION_RESERVED_SIZE,
                     PROT_READ|PROT_WRITE, MAP_SHARED,
-                    gpu, regions[HW3D_EBI].map_offset);
+                    gpu, regions[FB_ARENA].map_offset);
 
             if (base == MAP_FAILED) {
                 LOGE("mmap EBI1 (%s)", strerror(errno));
@@ -275,6 +279,7 @@ static int init_gpu_area_locked(private_module_t* m)
                 gpu = -1;
             }
 
+            m->fb_map_offset = regions[FB_ARENA].map_offset;
             m->gpu = gpu;
             m->gpu_base = base;
         }
@@ -422,9 +427,12 @@ try_ashmem:
                 *pHandle = hnd;
             }
         } else {
+            private_module_t* m = reinterpret_cast<private_module_t*>(
+                    dev->common.module);
             hnd->offset = offset;
             hnd->base = int(base)+offset;
             hnd->gpu_fd = gpu_fd;
+            hnd->map_offset = m->fb_map_offset;
             *pHandle = hnd;
         }
     }
