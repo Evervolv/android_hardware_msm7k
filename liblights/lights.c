@@ -15,6 +15,7 @@
  */
 
 
+// #define LOG_NDEBUG 0
 #define LOG_TAG "lights"
 
 #include <cutils/log.h>
@@ -219,7 +220,7 @@ set_speaker_light_locked(struct light_device_t* dev,
     colorRGB = state->color;
 
 #if 0
-    LOGD("set_led_state colorRGB=%08X, onMS=%d, offMS=%d\n",
+    LOGD("set_speaker_light_locked colorRGB=%08X, onMS=%d, offMS=%d\n",
             colorRGB, onMS, offMS);
 #endif
 
@@ -325,7 +326,6 @@ set_light_attention(struct light_device_t* dev,
         struct light_state_t const* state)
 {
     pthread_mutex_lock(&g_lock);
-    g_notification = *state;
     LOGV("set_light_attention g_trackball=%d color=0x%08x",
             g_trackball, state->color);
     if (state->flashMode == LIGHT_FLASH_HARDWARE) {
