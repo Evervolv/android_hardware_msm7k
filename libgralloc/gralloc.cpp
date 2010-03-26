@@ -403,19 +403,23 @@ try_ashmem:
             // When a process holding GPU surfaces gets killed, it may take
             // up to a few seconds until SurfaceFlinger is notified and can
             // release the memory. So it's useful to wait a little bit here.
-            long sleeptime = 250000;
-            int retry = (5000000 / sleeptime); // 5s wait max
+            long sleeptime = 0;
+            int retry = 8; // roughly 5 seconds
             do {
                 offset = sAllocatorGPU.allocate(size);
                 if (offset < 0) {
                     // no more pmem memory
+                    LOGW("%d KiB allocation failed in GPU memory, retrying...",
+                            size/1024);
                     err = -ENOMEM;
+                    sleeptime += 250000;
                     usleep(sleeptime);
                 } else {
                     LOGD("allocating GPU size=%d, offset=%d", size, offset);
                     fd = open("/dev/null", O_RDONLY); // just so marshalling doesn't fail
                     gpu_fd = m->gpu;
                     memset((char*)base + offset, 0, size);
+                    err = 0;
                 }
             } while ((err == -ENOMEM) && (retry-- > 0));
 
