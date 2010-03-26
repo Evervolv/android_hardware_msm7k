@@ -399,16 +399,26 @@ try_ashmem:
         if (err == 0) {
             // GPU buffers are always mmapped
             base = m->gpu_base;
-            offset = sAllocatorGPU.allocate(size);
-            if (offset < 0) {
-                // no more pmem memory
-                err = -ENOMEM;
-            } else {
-                LOGD("allocating GPU size=%d, offset=%d", size, offset);
-                fd = open("/dev/null", O_RDONLY); // just so marshalling doesn't fail
-                gpu_fd = m->gpu;
-                memset((char*)base + offset, 0, size);
-            }
+
+            // When a process holding GPU surfaces gets killed, it may take
+            // up to a few seconds until SurfaceFlinger is notified and can
+            // release the memory. So it's useful to wait a little bit here.
+            long sleeptime = 250000;
+            int retry = (5000000 / sleeptime); // 5s wait max
+            do {
+                offset = sAllocatorGPU.allocate(size);
+                if (offset < 0) {
+                    // no more pmem memory
+                    err = -ENOMEM;
+                    usleep(sleeptime);
+                } else {
+                    LOGD("allocating GPU size=%d, offset=%d", size, offset);
+                    fd = open("/dev/null", O_RDONLY); // just so marshalling doesn't fail
+                    gpu_fd = m->gpu;
+                    memset((char*)base + offset, 0, size);
+                }
+            } while ((err == -ENOMEM) && (retry-- > 0));
+
         } else {
             // not enough memory, try ashmem
             flags &= ~private_handle_t::PRIV_FLAGS_USES_GPU;
