@@ -25,8 +25,8 @@ namespace android {
 
 // Max volume for streams when playing over bluetooth SCO device while in call: -18dB
 #define IN_CALL_SCO_VOLUME_MAX  0.126
-// Min music volume for 3.5mm jack in car dock: -8dB
-#define CAR_DOCK_MUSIC_MINI_JACK_VOLUME_MIN 0.4
+// Min music volume for 3.5mm jack in car dock: -10dB
+#define CAR_DOCK_MUSIC_MINI_JACK_VOLUME_MIN 0.316
 
 // ----------------------------------------------------------------------------
 // AudioPolicyManager implementation for qsd8k platform
