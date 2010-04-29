@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-common_msm_dirs := libcopybit liblights librpc
+common_msm_dirs := libcopybit liblights libopencorehw librpc libstagefrighthw
 msm7k_dirs := $(common_msm_dirs) boot libgralloc libaudio
 qsd8k_dirs := $(common_msm_dirs) libgralloc-qsd8k libaudio-qsd8k dspcrashd
 
