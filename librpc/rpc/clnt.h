@@ -118,6 +118,11 @@ typedef void (*clnt_call_non_blocking_cb)
   rpc_reply_header error
 );
 
+/*
+ * By convention, procedure 0 takes null arguments and returns them
+ */
+#define NULLPROC ((rpcproc_t)0)
+
 /*===========================================================================
 FUNCTION CLNT_CALL
 

@@ -85,6 +85,7 @@ extern bool_t xdr_bytes (XDR *xdr, char **cpp, u_int *sizep, u_int maxsize);
 extern bool_t xdr_enum (XDR *xdr, enum_t *ep);
 extern bool_t xdr_pointer (XDR *xdrs, char **_objpp, u_int obj_size, xdrproc_t xdr_obj);
 extern bool_t xdr_int (XDR *xdr, int *ip);
+extern bool_t xdr_u_int (XDR *xdr, u_int *ip);
 extern bool_t xdr_char (XDR *xdr, char *cp);
 extern bool_t xdr_u_char (XDR *xdr, u_char *cp);
 extern bool_t xdr_long (XDR *xdr, long *ulp);
