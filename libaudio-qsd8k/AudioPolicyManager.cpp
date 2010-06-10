@@ -235,6 +235,13 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
 
 float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t output, uint32_t device)
 {
+    // if requested volume index is the minimum possible value, we must honor this value as this
+    // means the stream is muted. This overrides condition-specific modifications to the volume
+    // computed in the generic APM
+    if (index == mStreams[stream].mIndexMin) {
+        return AudioPolicyManagerBase::computeVolume(stream, index, output, device);
+    }
+
     // force volume on A2DP output to maximum if playing through car dock speakers
     // as volume is applied on the car dock and controlled via car dock keys.
 #ifdef WITH_A2DP
