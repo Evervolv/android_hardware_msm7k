@@ -22,17 +22,19 @@
 #define LOG_TAG "RPC"
 #include <utils/Log.h>
 
-#if 1
+#ifdef RPC_LOG_TO_STDOUT_ONLY
 #define PRINT(x...) do {                                    \
         fprintf(stdout, "%s(%d) ", __FUNCTION__, __LINE__); \
         fprintf(stdout, ##x);                               \
     } while(0)
-#else
+#elif defined(RPC_LOG_TO_STDOUT_AND_LOG)
 #define PRINT(x...) do {                                    \
         fprintf(stdout, "%s(%d) ", __FUNCTION__, __LINE__); \
         fprintf(stdout, ##x);                               \
         LOGI(x);                               \
     } while(0)
+#else
+#define PRINT(x...) LOGI(x)
 #endif
 
 #ifdef DEBUG
@@ -57,6 +59,7 @@
         if (__builtin_expect (cond, 0)) {                                      \
             fprintf(stderr, "%s:%s:(%d): ", __FILE__, __FUNCTION__, __LINE__); \
             fprintf(stderr, ##msg);                                            \
+            LOGE(msg);                                                         \
         }                                                                      \
     } while(0)
 
