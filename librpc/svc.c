@@ -47,6 +47,7 @@
 #include <rpc/rpc_router_ioctl.h>
 #include <debug.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 extern XDR *xdr_init_common(const char *name, int is_client);
 extern void xdr_destroy_common(XDR *xdr);
@@ -129,7 +130,11 @@ static void* svc_context(void *__u)
                     for (; trav; trav = trav->next)
                         if (trav->xdr->fd == n) {
                             /* read the entire RPC */
-                            trav->xdr->xops->read(trav->xdr);
+                            if (trav->xdr->xops->read(trav->xdr) == 0) {
+                                E("%08x:%08x ONCRPC read error: aborting!\n",
+                                  trav->xdr->x_prog, trav->xdr->x_vers);
+                                abort();
+                            }
                             svc_dispatch(trav, xprt);
                             break;
                         }

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdlib.h>
 
 #include <hardware_legacy/power.h>
 
@@ -221,7 +222,11 @@ static void *rx_context(void *__u __attribute__((unused)))
                     D("%08x:%08x reading data.\n",
                       client->xdr->x_prog, client->xdr->x_vers);
                     grabPartialWakeLock();
-                    client->xdr->xops->read(client->xdr);
+                    if (client->xdr->xops->read(client->xdr) == 0) {
+                        E("%08x:%08x ONCRPC read error: aborting!\n",
+                          client->xdr->x_prog, client->xdr->x_vers);
+                        abort();
+                    }
                     client->input_xdr_busy = 1;
                     pthread_mutex_unlock(&client->input_xdr_lock);
 
