@@ -818,8 +818,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
     }
 
 
-    if (device == (int) SND_DEVICE_BT
-            || device == (int) SND_DEVICE_BT_EC_OFF) {
+    if (device == (int) SND_DEVICE_BT) {
         if (mBluetoothIdTx != 0) {
             rx_acdb_id = mBluetoothIdRx;
             tx_acdb_id = mBluetoothIdTx;
@@ -829,7 +828,8 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
             tx_acdb_id = mBTEndpoints[0].tx;
             LOGD("Update ACDB ID to default BT setting\n");
         }
-    } else if (device == (int) SND_DEVICE_CARKIT) {
+    }  else if (device == (int) SND_DEVICE_CARKIT
+                || device == (int) SND_DEVICE_BT_EC_OFF) {
         if (mBluetoothIdTx != 0) {
             rx_acdb_id = mBluetoothIdRx;
             tx_acdb_id = mBluetoothIdTx;
