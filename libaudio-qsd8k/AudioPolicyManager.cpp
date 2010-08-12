@@ -262,9 +262,10 @@ float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t
         }
     }
 
-    // in car dock: when using the 3.5mm jack to play media, set a fixed volume as access to the
+    // in car dock: when using the 3.5mm jack to play media, set a minimum volume as access to the
     // physical volume keys is blocked by the car dock frame.
     if ((mForceUse[AudioSystem::FOR_DOCK] == AudioSystem::FORCE_BT_CAR_DOCK) &&
+            (volume < CAR_DOCK_MUSIC_MINI_JACK_VOLUME_MIN) &&
             (stream == AudioSystem::MUSIC) &&
             (device & (AudioSystem::DEVICE_OUT_WIRED_HEADPHONE |
                 AudioSystem::DEVICE_OUT_WIRED_HEADSET))) {
