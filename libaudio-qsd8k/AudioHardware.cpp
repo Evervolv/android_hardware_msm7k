@@ -1587,6 +1587,9 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
 
     if (mStandby) {
 
+        LOGV("acquire output wakelock");
+        acquire_wake_lock(PARTIAL_WAKE_LOCK, kOutputWakelockStr);
+
         // open driver
         LOGV("open pcm_out driver");
         status = ::open("/dev/msm_pcm_out", O_RDWR);
@@ -1637,8 +1640,6 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
             goto Error;
         }
 
-        LOGV("acquire output wakelock");
-        acquire_wake_lock(PARTIAL_WAKE_LOCK, kOutputWakelockStr);
         mStandby = false;
     }
 
@@ -1663,7 +1664,7 @@ Error:
     }
     // Simulate audio output timing in case of error
     usleep(bytes * 1000000 / frameSize() / sampleRate());
-
+    release_wake_lock(kOutputWakelockStr);
     return status;
 }
 
