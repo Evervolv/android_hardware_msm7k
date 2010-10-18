@@ -16,7 +16,7 @@
 
 #include <math.h>
 
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 1
 #define LOG_TAG "AudioHardwareQSD"
 #include <utils/Log.h>
 #include <utils/String8.h>
@@ -118,7 +118,7 @@ AudioHardware::AudioHardware() :
 
     acoustic =:: dlopen("/system/lib/libhtc_acoustic.so", RTLD_NOW);
     if (acoustic == NULL ) {
-        LOGE("Could not open libhtc_acoustic.so");
+        LOGD("Could not open libhtc_acoustic.so");
         /* this is not really an error on non-htc devices... */
         mNumBTEndpoints = 0;
         mInit = true;
@@ -132,30 +132,30 @@ AudioHardware::AudioHardware() :
 
     set_tpa2018d1_parameters = (int (*)(void))::dlsym(acoustic, "set_tpa2018d1_parameters");
     if ((*set_tpa2018d1_parameters) == 0) {
-        LOGI("set_tpa2018d1_parameters() not present");
+        LOGD("set_tpa2018d1_parameters() not present");
         support_tpa2018d1 = false;
     }
 
     int rc = set_acoustic_parameters();
     if (rc < 0) {
-        LOGE("Could not set acoustic parameters to share memory: %d", rc);
+        LOGD("Could not set acoustic parameters to share memory: %d", rc);
     }
 
     if (support_tpa2018d1) {
        rc = set_tpa2018d1_parameters();
        if (rc < 0) {
            support_tpa2018d1 = false;
-           LOGE("speaker amplifier tpa2018 is not supported\n");
+           LOGD("speaker amplifier tpa2018 is not supported\n");
        }
     }
 
     snd_get_num = (int (*)(void))::dlsym(acoustic, "snd_get_num");
     if ((*snd_get_num) == 0 ) {
-        LOGE("Could not open snd_get_num()");
+        LOGD("Could not open snd_get_num()");
     }
 
     mNumBTEndpoints = snd_get_num();
-    LOGD("mNumBTEndpoints = %d", mNumBTEndpoints);
+    LOGV("mNumBTEndpoints = %d", mNumBTEndpoints);
     mBTEndpoints = new msm_bt_endpoint[mNumBTEndpoints];
     mInit = true;
     LOGV("constructed %d SND endpoints)", mNumBTEndpoints);
@@ -168,7 +168,7 @@ AudioHardware::AudioHardware() :
     snd_get_bt_endpoint(mBTEndpoints);
 
     for (int i = 0; i < mNumBTEndpoints; i++) {
-        LOGE("BT name %s (tx,rx)=(%d,%d)", mBTEndpoints[i].name, mBTEndpoints[i].tx, mBTEndpoints[i].rx);
+        LOGV("BT name %s (tx,rx)=(%d,%d)", mBTEndpoints[i].name, mBTEndpoints[i].tx, mBTEndpoints[i].rx);
     }
 
     // reset voice mode in case media_server crashed and restarted while in call
@@ -410,7 +410,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
             mBluetoothNrec = true;
         } else {
             mBluetoothNrec = false;
-            LOGI("Turning noise reduction and echo cancellation off for BT "
+            LOGD("Turning noise reduction and echo cancellation off for BT "
                  "headset");
         }
     }
@@ -422,12 +422,12 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
             if (!strcasecmp(value.string(), mBTEndpoints[i].name)) {
                 mBluetoothIdTx = mBTEndpoints[i].tx;
                 mBluetoothIdRx = mBTEndpoints[i].rx;
-                LOGI("Using custom acoustic parameters for %s", value.string());
+                LOGD("Using custom acoustic parameters for %s", value.string());
                 break;
             }
         }
         if (mBluetoothIdTx == 0) {
-            LOGI("Using default acoustic parameters "
+            LOGD("Using default acoustic parameters "
                  "(%s not in acoustic database)", value.string());
         }
         doRouting();
@@ -611,10 +611,10 @@ static status_t set_volume_rpc(uint32_t volume)
 status_t AudioHardware::setVoiceVolume(float v)
 {
     if (v < 0.0) {
-        LOGW("setVoiceVolume(%f) under 0.0, assuming 0.0\n", v);
+        LOGW("setVoiceVolume(%f) under 0.0, assuming 0.0", v);
         v = 0.0;
     } else if (v > 1.0) {
-        LOGW("setVoiceVolume(%f) over 1.0, assuming 1.0\n", v);
+        LOGW("setVoiceVolume(%f) over 1.0, assuming 1.0", v);
         v = 1.0;
     }
 
@@ -625,8 +625,7 @@ status_t AudioHardware::setVoiceVolume(float v)
         LOGD("HAC enable: Setting in-call volume to maximum.\n");
         set_volume_rpc(VOICE_VOLUME_MAX);
     } else {
-        LOGD("setVoiceVolume(%f)\n", v);
-        LOGI("Setting in-call volume to %d (available range is 0 to %d)\n", vol, VOICE_VOLUME_MAX);
+        LOGI("voice volume %f (range is 0 to %d)", vol, VOICE_VOLUME_MAX);
         set_volume_rpc(vol); //always set current device
     }
     mVoiceVolume = vol;
@@ -635,7 +634,7 @@ status_t AudioHardware::setVoiceVolume(float v)
 
 status_t AudioHardware::setMasterVolume(float v)
 {
-    LOGI("Set master volume to %f.\n", v);
+    LOGI("Set master volume to %f", v);
     // We return an error code here to let the audioflinger do in-software
     // volume on top of the maximum volume that we set through the SND API.
     // return error - software mixer will handle it
@@ -842,7 +841,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
     } else if (mMode == AudioSystem::MODE_IN_CALL
                && hac_enable && mHACSetting &&
                device == (int) SND_DEVICE_HANDSET) {
-        LOGE("Update acdb id to hac profile.");
+        LOGD("Update acdb id to hac profile.");
         rx_acdb_id = ACDB_ID_HAC_HANDSET_SPKR;
         tx_acdb_id = ACDB_ID_HAC_HANDSET_MIC;
     } else {
@@ -924,7 +923,9 @@ status_t AudioHardware::doA1026_init(void)
     if (fw_fd < 0) {
         LOGE("Fail to open %s\n", fn);
         goto ld_img_error;
-    } else LOGI("open %s success\n", fn);
+    } else {
+        LOGD("open %s success\n", fn);
+    }
 
     rc = fstat(fw_fd, &fw_stat);
     if (rc < 0) {
@@ -934,7 +935,7 @@ status_t AudioHardware::doA1026_init(void)
 
     remaining = (int)fw_stat.st_size;
 
-    LOGI("Firmware %s size %d\n", fn, remaining);
+    LOGD("Firmware %s size %d\n", fn, remaining);
 
     if (remaining > sizeof(local_vpimg_buf)) {
         LOGE("File %s size %d exceeds internal limit %d\n",
@@ -963,11 +964,11 @@ status_t AudioHardware::doA1026_init(void)
 
     fwimg.buf = local_vpimg_buf;
     fwimg.img_size = (int)(fw_stat.st_size - remaining);
-    LOGI("Total %d bytes put to user space buffer.\n", fwimg.img_size);
+    LOGD("Total %d bytes put to user space buffer.\n", fwimg.img_size);
 
     rc = ioctl(fd_a1026, A1026_BOOTUP_INIT, &fwimg);
     if (!rc) {
-        LOGI("audience_a1026 init OK\n");
+        LOGD("audience_a1026 init OK\n");
         mA1026Init = 1;
     } else
         LOGE("audience_a1026 init failed\n");
@@ -1300,7 +1301,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         } while (--retry);
 
         if (rc < 0) {
-            LOGE("A1026 do hard reset to recover from error!\n");
+            LOGW("A1026 do hard reset to recover from error!\n");
             rc = doA1026_init(); /* A1026 needs to do hard reset! */
             if (!rc) {
                 /* after doA1026_init(), fd_a1026 is -1*/
@@ -1651,7 +1652,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         } else {
             if (errno != EAGAIN) return written;
             mRetryCount++;
-            LOGW("EAGAIN - retry");
+            LOGD("EAGAIN - retry");
         }
     }
 
@@ -1678,7 +1679,7 @@ status_t AudioHardware::AudioStreamOutMSM72xx::standby()
         release_wake_lock(kOutputWakelockStr);
     }
     mStandby = true;
-    LOGI("AudioHardware pcm playback is going to standby.");
+    LOGD("AudioHardware pcm playback is going to standby.");
     return status;
 }
 
@@ -1913,7 +1914,7 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
         } else {
             if (errno != EAGAIN) return bytesRead;
             mRetryCount++;
-            LOGW("EAGAIN - retrying");
+            LOGD("EAGAIN - retrying");
         }
     }
     return bytes;
@@ -1938,7 +1939,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::standby()
     mHardware->clearCurDevice();
     mHardware->doRouting();
 
-    LOGI("AudioHardware PCM record is going to standby.");
+    LOGD("AudioHardware PCM record is going to standby.");
     return NO_ERROR;
 }
 
