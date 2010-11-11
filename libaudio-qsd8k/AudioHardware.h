@@ -103,8 +103,6 @@ namespace android {
 #define RX_IIR_ENABLE   0x0004
 #define RX_IIR_DISABLE  0x0000
 
-#define KEY_A1026_VR_MODE "vr_mode"
-
 #define MOD_PLAY 1
 #define MOD_REC  2
 

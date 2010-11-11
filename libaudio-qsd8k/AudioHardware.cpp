@@ -36,6 +36,7 @@
 
 #include "AudioHardware.h"
 #include <media/AudioRecord.h>
+#include <media/mediarecorder.h>
 
 extern "C" {
 #include "msm_audio.h"
@@ -1968,15 +1969,16 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
     AudioParameter param = AudioParameter(keyValuePairs);
     status_t status = NO_ERROR;
     int device;
-    String8 key = String8(KEY_A1026_VR_MODE);
-    int enabled;
+    String8 key = String8(AudioParameter::keyInputSource);
+    int source;
     LOGV("AudioStreamInMSM72xx::setParameters() %s", keyValuePairs.string());
 
-    // reading voice recognition mode parameter
-    if (param.getInt(key, enabled) == NO_ERROR) {
-        LOGV("set vr_mode_enabled to %d", enabled);
-        vr_mode_change = (vr_mode_enabled != enabled);
-        vr_mode_enabled = enabled;
+    // reading input source for voice recognition mode parameter
+    if (param.getInt(key, source) == NO_ERROR) {
+        LOGV("set input source %d", source);
+        int uses_vr = (source == AUDIO_SOURCE_VOICE_RECOGNITION);
+        vr_mode_change = (vr_mode_enabled != uses_vr);
+        vr_mode_enabled = uses_vr;
         param.remove(key);
     }
 
