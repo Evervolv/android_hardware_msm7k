@@ -274,12 +274,6 @@ private:
 
     class AudioStreamInMSM72xx : public AudioStreamIn {
     public:
-        enum input_state {
-            AUDIO_INPUT_CLOSED,
-            AUDIO_INPUT_OPENED,
-            AUDIO_INPUT_STARTED
-        };
-
                             AudioStreamInMSM72xx();
         virtual             ~AudioStreamInMSM72xx();
                 status_t    set(AudioHardware* mHardware,
@@ -300,12 +294,12 @@ private:
         virtual String8     getParameters(const String8& keys);
         virtual unsigned int  getInputFramesLost() const { return 0; }
                 uint32_t    devices() { return mDevices; }
-                int         state() const { return mState; }
+                bool        checkStandby();
 
     private:
                 AudioHardware* mHardware;
                 int         mFd;
-                int         mState;
+                bool        mStandby;
                 int         mRetryCount;
                 int         mFormat;
                 uint32_t    mChannels;
