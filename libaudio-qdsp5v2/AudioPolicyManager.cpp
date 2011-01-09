@@ -326,6 +326,7 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
     break;
 
     case STRATEGY_SONIFICATION:
+    case STRATEGY_MEDIA_SONIFICATION:
 
         // If incall, just select the STRATEGY_PHONE device: The rest of the behavior is handled by
         // handleIncallSonification().
@@ -337,9 +338,11 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
         // - if we are docked to a BT CAR dock, don't duplicate for the sonification strategy
         // - if we are docked to a BT DESK dock, use only speaker for the sonification strategy
         if (mForceUse[AudioSystem::FOR_DOCK] != AudioSystem::FORCE_BT_CAR_DOCK) {
-            device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
-            if (device == 0) {
-                LOGE("getDeviceForStrategy() speaker device not found");
+            if (strategy == STRATEGY_SONIFICATION) {
+                device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
+                if (device == 0) {
+                    LOGE("getDeviceForStrategy() speaker device not found");
+                }
             }
             if (mForceUse[AudioSystem::FOR_DOCK] == AudioSystem::FORCE_BT_DESK_DOCK) {
                 if (mAvailableOutputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
