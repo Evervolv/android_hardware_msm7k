@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
  * Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+ * Copyright (C) 2011 The CyanogenMod Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -483,7 +484,7 @@ public:
 
 		ri->rotations = flag;
 
-		if (flag == MDP_ROT_NOP)
+		if ((flag & MDP_ROT_MASK) == MDP_ROT_NOP)
 			ri->enable = 0;
 		else
 			ri->enable = 1;
@@ -525,48 +526,53 @@ public:
 
 		/* set this overlay's parameter (talk to the h/w) */
 		switch (param) {
-			case OVERLAY_ROTATION_DEG:
-				/* only 90 rotations are supported, the call fails
-				 * for other values */
-				LOGE("========= ROTATION request - not supported yet!");
-				break;
 			case OVERLAY_DITHER:
+				if (value) ov.user_data[0] |= MDP_DITHER;
+				else ov.user_data[0] &= ~MDP_DITHER;
+				if (ioctl(obj->getOvFd(), MSMFB_OVERLAY_SET, &ov)) {
+					LOGE("%s: MSMFB_OVERLAY_SET error!", __FUNCTION__);
+					result = -EINVAL;
+				}
 				break;
+			case OVERLAY_ROTATION_DEG:
+				if (value == 0) value = 0;
+				else if (value == 90) value = OVERLAY_TRANSFORM_ROT_90;
+				else if (value == 180) value = OVERLAY_TRANSFORM_ROT_180;
+				else if (value == 270) value = OVERLAY_TRANSFORM_ROT_270;
+				else {
+				   result = -EINVAL;
+				   break;
+				}
 			case OVERLAY_TRANSFORM:
 #ifdef USE_MSM_ROTATOR
-				switch ( value ) {
-					case 0:
-						if (ov.user_data[0] & MDP_ROT_90) {
-							tmp = ov.src_rect.y;
-							ov.src_rect.y = ov.src.width - (ov.src_rect.x + ov.src_rect.w);
-							ov.src_rect.x = tmp;
-							overlay_src_swap(&ov);
-							obj->rotator_dest_swap();
-						}
-						flag = MDP_ROT_NOP;
-						ov.user_data[0] = flag;
-						break;
-
-					case OVERLAY_TRANSFORM_ROT_90:
-						if (ov.user_data[0] == 0) {
-							tmp = ov.src_rect.x;
-							ov.src_rect.x = ov.src.height - (ov.src_rect.y + ov.src_rect.h);
-							ov.src_rect.y = tmp;
-							overlay_src_swap(&ov);
-							obj->rotator_dest_swap();
-						}
-						flag = MDP_ROT_90;
-						ov.user_data[0] = flag;
-					   	break;
-					default: return -EINVAL;
+				if (value & ~(OVERLAY_TRANSFORM_FLIP_H|OVERLAY_TRANSFORM_FLIP_V|OVERLAY_TRANSFORM_ROT_90)) {
+					result = -EINVAL;
+					break;
 				}
+				flag = MDP_ROT_NOP;
+				if (value & OVERLAY_TRANSFORM_FLIP_H) flag |= MDP_FLIP_UD;
+				if (value & OVERLAY_TRANSFORM_FLIP_V) flag |= MDP_FLIP_LR;
+				if (value & OVERLAY_TRANSFORM_ROT_90) flag |= MDP_ROT_90;
+
+				if ((flag & MDP_ROT_90) != (ov.user_data[0] & MDP_ROT_90)) {
+					tmp = ov.src_rect.y;
+					ov.src_rect.y = ov.src.width - (ov.src_rect.x + ov.src_rect.w);
+					ov.src_rect.x = tmp;
+					overlay_src_swap(&ov);
+					obj->rotator_dest_swap();
+				}
+
+				ov.user_data[0] = (ov.user_data[0] & ~MDP_ROT_MASK) | flag;
 
 				result = overlay_setRot(obj->getRotFd(), obj->getRot(), flag);
 
-				if (ioctl(obj->getOvFd(), MSMFB_OVERLAY_SET, &ov))
+				if (ioctl(obj->getOvFd(), MSMFB_OVERLAY_SET, &ov)) {
 					LOGE("%s: MSMFB_OVERLAY_SET error!", __FUNCTION__);
-#endif
+					result = -EINVAL;
+				}
+#else
 				result = -EINVAL;
+#endif
 				break;
 			default:
 				result = -EINVAL;
@@ -727,7 +733,7 @@ public:
 			return -errno;
 		}
 
-		if (ov.user_data[0] == MDP_ROT_90) {
+		if (ov.user_data[0] & MDP_ROT_90) {
 			tmp = x;
 			x = ov.src.width - (y + h);
 			y = tmp;
