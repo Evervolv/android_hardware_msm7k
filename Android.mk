@@ -14,9 +14,19 @@
 # limitations under the License.
 #
 
+LIBAUDIO := libaudio
+ifeq ($(TARGET_PROVIDES_LIBAUDIO),true)
+    # A 'true' value assumes it is present in the device's dir,
+    # so exclude it here entirely to avoid duplicates
+    LIBAUDIO := ""
+else ifneq ($(TARGET_PROVIDES_LIBAUDIO),)
+    # Target provides a full path to its libaudio
+    LIBAUDIO := $(TARGET_PROVIDES_LIBAUDIO)
+endif
+
 common_msm_dirs := libcopybit liblights libopencorehw librpc libstagefrighthw
-msm7k_dirs := $(common_msm_dirs) boot libgralloc libaudio
-msm7k_adreno_dirs := $(common_msm_dirs) boot libgralloc-qsd8k libaudio
+msm7k_dirs := $(common_msm_dirs) boot libgralloc $(LIBAUDIO)
+msm7k_adreno_dirs := $(common_msm_dirs) boot libgralloc-qsd8k $(LIBAUDIO)
 qsd8k_dirs := $(common_msm_dirs) libgralloc-qsd8k libaudio-qsd8k dspcrashd
 msm7x30_dirs := liblights libgralloc-qsd8k librpc libaudio-qdsp5v2 liboverlay
 
