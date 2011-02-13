@@ -1,4 +1,4 @@
-ifneq ($(BOARD_USES_QCOM_LIBRPC),true)
+ifeq ($(BOARD_USES_QCOM_LIBRPC),true)
 
 LOCAL_PATH:= $(call my-dir)
 
