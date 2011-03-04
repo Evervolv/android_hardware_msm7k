@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+//#define LOG_NDEBUG 0
+#define LOG_TAG "QComHardwareRenderer"
+#include <utils/Log.h>
+
 #include "QComHardwareRenderer.h"
 
 #include <binder/MemoryHeapBase.h>
@@ -145,7 +149,9 @@ void QComHardwareRenderer::publishBuffers(uint32_t pmem_fd) {
             mMemoryHeap);
 
     status_t err = mISurface->registerBuffers(bufferHeap);
-    CHECK_EQ(err, OK);
+    if (err != OK) {
+        LOGE("ISurface::registerBuffers failed (err = %d)", err);
+    }
 }
 
 }  // namespace android
