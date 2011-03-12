@@ -109,6 +109,9 @@ public:
 
     virtual status_t    setVoiceVolume(float volume);
     virtual status_t    setMasterVolume(float volume);
+#ifdef HAVE_FM_RADIO
+    virtual status_t    setFmVolume(float volume);
+#endif
 
     virtual status_t    setMode(int mode);
 
@@ -154,6 +157,10 @@ private:
     uint32_t    getInputSampleRate(uint32_t sampleRate);
     bool        checkOutputStandby();
     status_t    doRouting();
+#ifdef HAVE_FM_RADIO
+    status_t    setFmOnOff(bool onoff);
+#endif
+
     AudioStreamInMSM72xx*   getActiveInput_l();
 
     class AudioStreamOutMSM72xx : public AudioStreamOut {
@@ -244,6 +251,7 @@ private:
             msm_snd_endpoint *mSndEndpoints;
             int mNumSndEndpoints;
             int mCurSndDevice;
+            bool mFmRadioEnabled;
 
      friend class AudioStreamInMSM72xx;
             Mutex       mLock;
