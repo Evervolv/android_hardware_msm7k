@@ -29,9 +29,14 @@ LOCAL_SRC_FILES := 	\
 	gralloc.cpp		\
 	mapper.cpp		\
 	pmemalloc.cpp
-	
+
 LOCAL_MODULE := gralloc.$(TARGET_BOARD_PLATFORM)
 LOCAL_CFLAGS:= -DLOG_TAG=\"$(TARGET_BOARD_PLATFORM).gralloc\"
+
+ifeq ($(BOARD_USE_QCOM_PMEM),true)
+  LOCAL_CFLAGS += -DUSE_QCOM_PMEM
+endif
+
 include $(BUILD_SHARED_LIBRARY)
 
 # Build a host library for testing

@@ -216,6 +216,9 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
         }
 #endif
         if (device2 == 0) {
+            device2 = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_HDMI;
+        }
+        if (device2 == 0) {
             device = mAvailableOutputDevices & AudioSystem::DEVICE_OUT_SPEAKER;
         }
         // device is DEVICE_OUT_SPEAKER if we come from case STRATEGY_SONIFICATION, 0 otherwise

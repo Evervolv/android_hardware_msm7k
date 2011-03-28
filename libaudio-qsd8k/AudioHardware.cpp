@@ -65,6 +65,8 @@ static const uint32_t SND_DEVICE_HANDSET_BACK_MIC = 20;
 static const uint32_t SND_DEVICE_SPEAKER_BACK_MIC = 21;
 static const uint32_t SND_DEVICE_NO_MIC_HEADSET_BACK_MIC = 28;
 static const uint32_t SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC = 30;
+static const uint32_t SND_DEVICE_I2S_SPEAKER = 32;
+
 namespace android {
 static int support_a1026 = 1;
 static bool support_tpa2018d1 = true;
@@ -785,6 +787,9 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall, uint32_t r
         out_device = SPKR_PHONE_MONO;
         mic_device = TTY_HEADSET_MIC;
         LOGD("TTY HCO headset");
+    } else if (device == SND_DEVICE_I2S_SPEAKER) {
+        out_device = HDMI_SPKR;
+        LOGD("TTY I2S SPEAKER");
     } else {
         LOGE("unknown device %d", device);
         return -1;
@@ -1491,6 +1496,9 @@ status_t AudioHardware::doRouting()
         } else if (outputDevices & AudioSystem::DEVICE_OUT_BLUETOOTH_SCO_CARKIT) {
             LOGI("Routing audio to Bluetooth PCM\n");
             sndDevice = SND_DEVICE_CARKIT;
+        } else if (outputDevices & AudioSystem::DEVICE_OUT_HDMI) {
+            LOGI("Routing audio to HDMI\n");
+            sndDevice = SND_DEVICE_I2S_SPEAKER;
         } else if ((outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) &&
                 (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER)) {
                     LOGI("Routing audio to Wired Headset and Speaker\n");
