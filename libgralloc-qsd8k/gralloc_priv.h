@@ -51,6 +51,22 @@ enum {
     HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO    = 0x10A,
     HAL_PIXEL_FORMAT_YCrCb_422_SP           = 0x10B,
     HAL_PIXEL_FORMAT_YCrCb_420_SP_INTERLACE = 0x10C,
+    HAL_PIXEL_FORMAT_R_8                    = 0x10D,
+    HAL_PIXEL_FORMAT_RG_88                  = 0x10E,
+    HAL_PIXEL_FORMAT_INTERLACE              = 0x180,
+};
+
+/* possible formats for 3D content*/
+enum {
+    HAL_NO_3D = 0x00,
+    HAL_3D_IN_SIDE_BY_SIDE_HALF_L_R   = 0x10000,
+    HAL_3D_IN_TOP_BOTTOM              = 0x20000,
+    HAL_3D_IN_INTERLEAVE              = 0x40000,
+    HAL_3D_IN_SIDE_BY_SIDE_FULL       = 0x80000,
+    HAL_3D_IN_SIDE_BY_SIDE_HALF_R_L   = 0xC0000,
+    HAL_3D_OUT_SIDE_BY_SIDE       = 0x1000,
+    HAL_3D_OUT_TOP_BOTTOM         = 0x2000,
+    HAL_3D_OUT_INTERLEAVE         = 0x4000,
 };
 
 /*****************************************************************************/
@@ -75,7 +91,7 @@ struct private_module_t {
     float xdpi;
     float ydpi;
     float fps;
-    
+
     enum {
         // flag to indicate we'll post this buffer
         PRIV_USAGE_LOCKED_FOR_POST = 0x80000000
@@ -90,7 +106,7 @@ struct private_handle_t : public native_handle {
 struct private_handle_t {
     native_handle_t nativeHandle;
 #endif
-    
+
     enum {
         PRIV_FLAGS_FRAMEBUFFER    = 0x00000001,
         PRIV_FLAGS_USES_PMEM      = 0x00000002,
@@ -145,7 +161,7 @@ struct private_handle_t {
         const private_handle_t* hnd = (const private_handle_t*)h;
         if (!h || h->version != sizeof(native_handle) ||
                 h->numInts != sNumInts || h->numFds != sNumFds ||
-                hnd->magic != sMagic) 
+                hnd->magic != sMagic)
         {
             LOGE("invalid gralloc handle (at %p)", h);
             return -EINVAL;
