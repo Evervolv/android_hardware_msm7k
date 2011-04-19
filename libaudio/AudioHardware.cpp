@@ -467,8 +467,18 @@ status_t AudioHardware::setFmVolume(float v)
 {
 #if defined(HAVE_BCM_FM_RADIO) || defined(HAVE_TI_FM_RADIO)
 
+#ifdef WL1251
+    // Create a parabola to enable less volume in the minimim value
+    float a = 0.016;
+    float b = 0.95;
+
+    unsigned int VolValue = (unsigned int)(AudioSystem::logToLinear(v));
+
+    int volume = (unsigned int)(a*VolValue*VolValue+b*VolValue);
+#else
     float ratio = 2.5;
     int volume = (unsigned int)(AudioSystem::logToLinear(v) * ratio);
+#endif
 
     char volhex[10] = "";
     sprintf(volhex, "0x%x ", volume);
