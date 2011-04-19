@@ -24,6 +24,9 @@ LOCAL_SRC_FILES := overlayLib.cpp
 LOCAL_MODULE := liboverlay
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS += -DCONFIG_MSM_MDP40
+ifneq ($(BOARD_OVERLAY_MINIFICATION_LIMIT),)
+    LOCAL_CFLAGS += -DHW_OVERLAY_MINIFICATION_LIMIT=$(BOARD_OVERLAY_MINIFICATION_LIMIT)
+endif
 include $(BUILD_SHARED_LIBRARY)
 
 # HAL module implemenation, not prelinked and stored in

@@ -19,9 +19,6 @@
 #include "gralloc_priv.h"
 
 #define INTERLACE_MASK 0x80
-#define FBDEV_0 "/dev/graphics/fb0"
-#define FBDEV_LEN strlen("msmfbXX_")
-#define MDDI_PANEL '1'
 /* Helper functions */
 
 static int get_mdp_format(int format) {
@@ -81,35 +78,37 @@ static int get_size(int format, int w, int h) {
 }
 
 static int get_mdp_orientation(int rotation, int flip) {
-    switch(flip) {
-    case HAL_TRANSFORM_FLIP_V:
-        switch(rotation) {
-        case 0: return MDP_FLIP_UD;
-        case HAL_TRANSFORM_ROT_90:  return (MDP_ROT_90 | MDP_FLIP_UD);
+    int mdp_orientation = 0;
+
+    switch (rotation) {
+        case 0:
+            break;
+        case 90: mdp_orientation ^= MDP_ROT_90;
+            break;
+        case 180: mdp_orientation ^= MDP_ROT_180;
+            flip ^= (HAL_TRANSFORM_FLIP_H|HAL_TRANSFORM_FLIP_V);
+            break;
+        case 270: mdp_orientation ^= MDP_ROT_270;
+            flip ^= (HAL_TRANSFORM_FLIP_H|HAL_TRANSFORM_FLIP_V);
+            break;
         default: return -1;
-        break;
-        }
-    break;
-    case HAL_TRANSFORM_FLIP_H:
-        switch(rotation) {
-        case 0: return MDP_FLIP_LR;
-        case HAL_TRANSFORM_ROT_90:  return (MDP_ROT_90 | MDP_FLIP_LR);
-        default: return -1;
-        break;
-        }
-    break;
-    default:
-        switch(rotation) {
-        case 0: return MDP_ROT_NOP;
-        case HAL_TRANSFORM_ROT_90:  return MDP_ROT_90;
-        case HAL_TRANSFORM_ROT_180: return MDP_ROT_180;
-        case HAL_TRANSFORM_ROT_270: return MDP_ROT_270;
-        default: return -1;
-        break;
-        }
-    break;
     }
-    return -1;
+
+    if (flip & ~(HAL_TRANSFORM_FLIP_H|HAL_TRANSFORM_FLIP_V))
+        return -1;
+
+    /* The MDP flips after rotating instead of before, so swap it if
+       we're rotating */
+    if (flip & HAL_TRANSFORM_FLIP_H) {
+        mdp_orientation ^= (mdp_orientation & MDP_ROT_90)
+            ? MDP_FLIP_UD : MDP_FLIP_LR;
+    }
+    if (flip & HAL_TRANSFORM_FLIP_V) {
+        mdp_orientation ^= (mdp_orientation & MDP_ROT_90)
+            ? MDP_FLIP_LR : MDP_FLIP_UD;
+    }
+
+    return mdp_orientation;
 }
 
 static bool isRGBType(int format) {
@@ -143,23 +142,7 @@ static void reportError(const char* message) {
 using namespace overlay;
 
 Overlay::Overlay() : mChannelUP(false), mHDMIConnected(false),
-                     mCloseChannel(false), mS3DFormat(0), mRotate(false) {
-    fb_fix_screeninfo finfo;
-    memset(&finfo, 0, sizeof(finfo));
-    int fd = open(FBDEV_0, O_RDWR, 0);
-    if (fd < 0) {
-        reportError("Cant open framebuffer ");
-        return;
-    } else {
-        if(ioctl(fd, FBIOGET_FSCREENINFO, &finfo) == -1) {
-            reportError("FBIOGET_FSCREENINFO on fb0 failed");
-            close(fd);
-            return;
-        }
-        if((finfo.id)[FBDEV_LEN] == MDDI_PANEL)
-            mRotate = true;
-        close(fd);
-    }
+                     mCloseChannel(false), mS3DFormat(0) {
 }
 
 Overlay::~Overlay() {
@@ -179,8 +162,6 @@ bool Overlay::startChannel(int w, int h, int format, int fbnum,
                               unsigned int format3D, int channel,
                               bool ignoreFB, int num_buffers) {
     int zorder = 0;
-    if(mRotate && !fbnum)
-        norot = 0;
 
     if (format3D)
         zorder = channel;
@@ -325,7 +306,7 @@ bool Overlay::setSource(uint32_t w, uint32_t h, int format, int orientation,
        hdmiChanged = 0x1;
 
     stateChanged = s3dChanged|hdmiChanged;
-    if (stateChanged || !objOvCtrlChannel[0].setSource(w, h, colorFormat, orientation, ignoreFB, mRotate)) {
+    if (stateChanged || !objOvCtrlChannel[0].setSource(w, h, colorFormat, orientation, ignoreFB)) {
         if (mChannelUP && isRGBType(hw_format) && (stateChanged != 0x10)) {
             mCloseChannel = true;
             return false;
@@ -561,8 +542,6 @@ bool OverlayControlChannel::openDevices(int fbnum) {
         return false;
     }
 
-    mFBPanelType = finfo.id[FBDEV_LEN];
-
     fb_var_screeninfo vinfo;
     if (ioctl(mFD, FBIOGET_VSCREENINFO, &vinfo) == -1) {
         reportError("FBIOGET_VSCREENINFO on fb1 failed");
@@ -666,10 +645,7 @@ bool OverlayControlChannel::startOVRotatorSessions(int w, int h,
         mRotInfo.src_rect.x = 0;
         mRotInfo.src_rect.y = 0;
         mRotInfo.rotations = 0;
-        if(mFBPanelType == MDDI_PANEL)
-            mRotInfo.enable = 1;
-        else
-            mRotInfo.enable = 0;
+        mRotInfo.enable = 0;
         mRotInfo.session_id = 0;
 	int result = ioctl(mRotFD, MSM_ROTATOR_IOCTL_START, &mRotInfo);
 	if (result) {
@@ -751,26 +727,19 @@ bool OverlayControlChannel::closeControlChannel() {
 }
 
 bool OverlayControlChannel::setSource(uint32_t w, uint32_t h,
-                        int format, int orientation, bool ignoreFB, bool useRot) {
+                        int format, int orientation, bool ignoreFB) {
     format = get_mdp_format(format);
-    if (useRot || ((orientation == mOrientation) && orientation)) {
+    if ((orientation == mOrientation)
+            && ((orientation == OVERLAY_TRANSFORM_ROT_90)
+            || (orientation == OVERLAY_TRANSFORM_ROT_270))) {
         if (format == MDP_Y_CRCB_H2V2_TILE) {
             format = MDP_Y_CRCB_H2V2;
             w = (((w-1)/64 +1)*64);
             h = (((h-1)/32 +1)*32);
         }
-        switch(orientation){
-            case OVERLAY_TRANSFORM_ROT_90:
-            case OVERLAY_TRANSFORM_ROT_270:
-            {
-                 int tmp = w;
-                 w = h;
-                 h = tmp;
-                break;
-            }
-            default:
-                 break;
-       }
+        int tmp = w;
+        w = h;
+        h = tmp;
     }
     if (w == mOVInfo.src.width && h == mOVInfo.src.height
             && format == mOVInfo.src.format && orientation == mOrientation) {
@@ -809,6 +778,18 @@ bool OverlayControlChannel::setPosition(int x, int y, uint32_t w, uint32_t h) {
         return false;
     }
 
+    /* HACK: Restore previous source size if it was changed due to
+       the minification limit. */
+    /* This may produce incorrect values when using tiled formats. */
+    if (ov.src_rect.w < ov.src.width) {
+        ov.src_rect.w = ov.src.width;
+        ov.src_rect.x = 0;
+    }
+    if (ov.src_rect.h < ov.src.height) {
+        ov.src_rect.h = ov.src.height;
+        ov.src_rect.y = 0;
+    }
+
     /* Scaling of upto a max of 8 times supported */
     if(w >(ov.src_rect.w * HW_OVERLAY_MAGNIFICATION_LIMIT)){
         w = HW_OVERLAY_MAGNIFICATION_LIMIT * ov.src_rect.w;
@@ -822,6 +803,16 @@ bool OverlayControlChannel::setPosition(int x, int y, uint32_t w, uint32_t h) {
     ov.dst_rect.y = y;
     ov.dst_rect.w = w;
     ov.dst_rect.h = h;
+
+    /* Crop if the scale down is below the supported minification amount */
+    if (ov.src_rect.w > (w * HW_OVERLAY_MINIFICATION_LIMIT)) {
+        ov.src_rect.w = w * HW_OVERLAY_MINIFICATION_LIMIT;
+        ov.src_rect.x = (ov.src.width - ov.src_rect.w) / 2;
+    }
+    if (ov.src_rect.h > (h * HW_OVERLAY_MINIFICATION_LIMIT)) {
+        ov.src_rect.h = h * HW_OVERLAY_MINIFICATION_LIMIT;
+        ov.src_rect.y = (ov.src.height - ov.src_rect.h) / 2;
+    }
 
     if (ioctl(mFD, MSMFB_OVERLAY_SET, &ov)) {
         reportError("setPosition, Overlay SET failed");
@@ -860,122 +851,57 @@ bool OverlayControlChannel::setParameter(int param, int value, bool fetch) {
     switch (param) {
     case OVERLAY_DITHER:
         break;
+    case OVERLAY_ROTATION_DEG:
+    {
+        switch (value) {
+        case 0: value = 0; break;
+        case 90: value = HAL_TRANSFORM_ROT_90; break;
+        case 180: value = HAL_TRANSFORM_ROT_180; break;
+        case 270: value = HAL_TRANSFORM_ROT_270; break;
+        default: return false;
+        }
+        /* Fallthrough */
+    }
     case OVERLAY_TRANSFORM:
     {
         int val = mOVInfo.user_data[0];
         if (value && mNoRot)
             return true;
 
-        int rot = value;
-        int flip = 0;
+        int rot = (value & HAL_TRANSFORM_ROT_90) ? 90 : 0;
+        int flip = (value & (HAL_TRANSFORM_FLIP_H|HAL_TRANSFORM_FLIP_V));
 
-        switch(rot) {
-        case 0:
-        case HAL_TRANSFORM_FLIP_H:
-        case HAL_TRANSFORM_FLIP_V:
-        {
-            if (val == MDP_ROT_90) {
-                    int tmp = mOVInfo.src_rect.y;
-                    mOVInfo.src_rect.y = mOVInfo.src.width -
-                            (mOVInfo.src_rect.x + mOVInfo.src_rect.w);
-                    mOVInfo.src_rect.x = tmp;
-                    swapOVRotWidthHeight();
-            }
-            else if (val == MDP_ROT_270) {
-                    int tmp = mOVInfo.src_rect.x;
-                    mOVInfo.src_rect.x = mOVInfo.src.height - (
-                            mOVInfo.src_rect.y + mOVInfo.src_rect.h);
-                    mOVInfo.src_rect.y = tmp;
-                    swapOVRotWidthHeight();
-            }
-            rot = 0;
-            flip = value & (HAL_TRANSFORM_FLIP_H|HAL_TRANSFORM_FLIP_V);
-            break;
+        if (!rot != !(val & MDP_ROT_90)) {
+            int tmp = mOVInfo.src_rect.y;
+            mOVInfo.src_rect.y = mOVInfo.src.width -
+                    (mOVInfo.src_rect.x + mOVInfo.src_rect.w);
+            mOVInfo.src_rect.x = tmp;
+            swapOVRotWidthHeight();
         }
-        case HAL_TRANSFORM_ROT_90:
-        case (HAL_TRANSFORM_ROT_90|HAL_TRANSFORM_FLIP_H):
-        case (HAL_TRANSFORM_ROT_90|HAL_TRANSFORM_FLIP_V):
-        {
-            if (val == MDP_ROT_270) {
-                    mOVInfo.src_rect.x = mOVInfo.src.width - (
-                            mOVInfo.src_rect.x + mOVInfo.src_rect.w);
-                    mOVInfo.src_rect.y = mOVInfo.src.height - (
-                    mOVInfo.src_rect.y + mOVInfo.src_rect.h);
-            }
-            else if (val == MDP_ROT_NOP || val == MDP_ROT_180) {
-                    int tmp = mOVInfo.src_rect.x;
-                    mOVInfo.src_rect.x = mOVInfo.src.height -
-                               (mOVInfo.src_rect.y + mOVInfo.src_rect.h);
-                    mOVInfo.src_rect.y = tmp;
-                    swapOVRotWidthHeight();
-            }
-            rot = HAL_TRANSFORM_ROT_90;
-            flip = value & (HAL_TRANSFORM_FLIP_H|HAL_TRANSFORM_FLIP_V);
-            break;
-        }
-        case HAL_TRANSFORM_ROT_180:
-        {
-            if (val == MDP_ROT_270) {
-                    int tmp = mOVInfo.src_rect.y;
-                    mOVInfo.src_rect.y = mOVInfo.src.width -
-                               (mOVInfo.src_rect.x + mOVInfo.src_rect.w);
-                    mOVInfo.src_rect.x = tmp;
-                    swapOVRotWidthHeight();
-            }
-            else if (val == MDP_ROT_90) {
-                    int tmp = mOVInfo.src_rect.x;
-                    mOVInfo.src_rect.x = mOVInfo.src.height - (
-                             mOVInfo.src_rect.y + mOVInfo.src_rect.h);
-                    mOVInfo.src_rect.y = tmp;
-                    swapOVRotWidthHeight();
-            }
-            break;
-        }
-        case HAL_TRANSFORM_ROT_270:
-        {
-            if (val == MDP_ROT_90) {
-                    mOVInfo.src_rect.y = mOVInfo.src.height -
-                               (mOVInfo.src_rect.y + mOVInfo.src_rect.h);
-                    mOVInfo.src_rect.x = mOVInfo.src.width -
-                               (mOVInfo.src_rect.x + mOVInfo.src_rect.w);
-            }
-            else if (val == MDP_ROT_NOP || val == MDP_ROT_180) {
-                    int tmp = mOVInfo.src_rect.y;
-                    mOVInfo.src_rect.y = mOVInfo.src.width - (
-                        mOVInfo.src_rect.x + mOVInfo.src_rect.w);
-                    mOVInfo.src_rect.x = tmp;
-                    swapOVRotWidthHeight();
-            }
-            break;
-        }
-        default: return false;
-    }
-    int mdp_rotation = get_mdp_orientation(rot, flip);
-    if (mdp_rotation == -1)
-        return false;
 
-    mOVInfo.user_data[0] = mdp_rotation;
-    mRotInfo.rotations = mOVInfo.user_data[0];
-
-    if (mOVInfo.user_data[0])
-        mRotInfo.enable = 1;
-    else {
-        if(mRotInfo.src.format == MDP_Y_CRCB_H2V2_TILE)
-            mOVInfo.src.format = MDP_Y_CRCB_H2V2_TILE;
-        if(mFBPanelType == MDDI_PANEL)
-            mRotInfo.enable = 1;
-        else
-            mRotInfo.enable = 0;
-        }
-        if (ioctl(mRotFD, MSM_ROTATOR_IOCTL_START, &mRotInfo)) {
-            reportError("setParameter, rotator start failed");
+        int mdp_rotation = get_mdp_orientation(rot, flip);
+        if (mdp_rotation == -1)
             return false;
-        }
 
-    if (ioctl(mFD, MSMFB_OVERLAY_SET, &mOVInfo)) {
-        reportError("setParameter, overlay set failed");
-        return false;
-    }
+        if (mOVInfo.user_data[0] != mdp_rotation) {
+            mOVInfo.user_data[0] = mdp_rotation;
+            mRotInfo.rotations = mOVInfo.user_data[0];
+
+            mRotInfo.enable = mRotInfo.rotations ? 1 : 0;
+
+            if (mRotInfo.src.format == MDP_Y_CRCB_H2V2_TILE)
+                mOVInfo.src.format = MDP_Y_CRCB_H2V2_TILE;
+
+            if (ioctl(mRotFD, MSM_ROTATOR_IOCTL_START, &mRotInfo)) {
+                reportError("setParameter, rotator start failed");
+                return false;
+            }
+
+            if (ioctl(mFD, MSMFB_OVERLAY_SET, &mOVInfo)) {
+                reportError("setParameter, overlay set failed");
+                return false;
+            }
+        }
         break;
     }
     default:
@@ -1319,6 +1245,17 @@ bool OverlayDataChannel::setCrop(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
     if(ov.dst_rect.h >(ov.src_rect.h * HW_OVERLAY_MAGNIFICATION_LIMIT)) {
         ov.dst_rect.h = HW_OVERLAY_MAGNIFICATION_LIMIT * ov.src_rect.h;
     }
+
+    /* Crop if the scale down is below the supported minification amount */
+    if (ov.src_rect.w > (ov.dst_rect.w * HW_OVERLAY_MINIFICATION_LIMIT)) {
+        ov.src_rect.w = ov.dst_rect.w * HW_OVERLAY_MINIFICATION_LIMIT;
+        ov.src_rect.x = (ov.src.width - ov.src_rect.w) / 2;
+    }
+    if (ov.src_rect.h > (ov.dst_rect.h * HW_OVERLAY_MINIFICATION_LIMIT)) {
+        ov.src_rect.h = ov.dst_rect.h * HW_OVERLAY_MINIFICATION_LIMIT;
+        ov.src_rect.y = (ov.src.height - ov.src_rect.h) / 2;
+    }
+
     if (ioctl(mFD, MSMFB_OVERLAY_SET, &ov)) {
         reportError("setCrop, overlay set error");
         return false;

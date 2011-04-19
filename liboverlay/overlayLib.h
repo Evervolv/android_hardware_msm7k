@@ -42,7 +42,9 @@
 #include <hardware/overlay.h>
 
 #define HW_OVERLAY_MAGNIFICATION_LIMIT 8
+#ifndef HW_OVERLAY_MINIFICATION_LIMIT
 #define HW_OVERLAY_MINIFICATION_LIMIT HW_OVERLAY_MAGNIFICATION_LIMIT
+#endif
 
 #define EVEN_OUT(x) if (x & 0x0001) {x--;}
 #define VG0_PIPE 0
@@ -90,7 +92,6 @@ class OverlayControlChannel {
     int mFBHeight;
     int mFBbpp;
     int mFBystride;
-    char mFBPanelType;
 
     int mFD;
     int mRotFD;
@@ -125,7 +126,7 @@ public:
     int getFormat3D() const { return mFormat3D; }
     bool getOrientation(int& orientation) const;
     bool setSource(uint32_t w, uint32_t h, int format,
-                       int orientation, bool ignoreFB, bool userot = false);
+                       int orientation, bool ignoreFB);
     bool getAspectRatioPosition(int w, int h, int format, overlay_rect *rect);
     bool getPositionS3D(int channel, int format, overlay_rect *rect);
 };
@@ -174,7 +175,6 @@ class Overlay {
     bool mHDMIConnected;
     int  mS3DFormat;
     bool mCloseChannel;
-    bool mRotate;
 
     OverlayControlChannel objOvCtrlChannel[2];
     OverlayDataChannel    objOvDataChannel[2];
