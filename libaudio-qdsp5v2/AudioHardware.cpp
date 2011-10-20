@@ -135,7 +135,7 @@ String8 AudioHardware::getParameters(const String8& keys)
     AudioParameter request = AudioParameter(keys);
     AudioParameter reply = AudioParameter();
 
-    LOGV("getParameters() %s", keys.string());
+    ALOGV("getParameters() %s", keys.string());
 
     return reply.toString();
 }
@@ -220,7 +220,7 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
     const uint8_t* p = static_cast<const uint8_t*>(buffer);
 
     if (mStandby) {
-        LOGV("open pcm_out driver");
+        ALOGV("open pcm_out driver");
         status = ::open("/dev/msm_pcm_out", O_RDWR);
         if (status < 0) {
                 LOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
@@ -229,7 +229,7 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
         mFd = status;
 
         // configuration
-        LOGV("get config");
+        ALOGV("get config");
         struct msm_audio_config config;
         status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
         if (status < 0) {
@@ -237,7 +237,7 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
             goto Error;
         }
 
-        LOGV("set pcm_out config");
+        ALOGV("set pcm_out config");
         config.channel_count = AudioSystem::popCount(channels());
         config.sample_rate = mSampleRate;
         config.buffer_size = mBufferSize;
@@ -249,10 +249,10 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
             goto Error;
         }
 
-        LOGV("buffer_size: %u", config.buffer_size);
-        LOGV("buffer_count: %u", config.buffer_count);
-        LOGV("channel_count: %u", config.channel_count);
-        LOGV("sample_rate: %u", config.sample_rate);
+        ALOGV("buffer_size: %u", config.buffer_size);
+        ALOGV("buffer_count: %u", config.buffer_count);
+        ALOGV("channel_count: %u", config.channel_count);
+        ALOGV("sample_rate: %u", config.sample_rate);
 
 #if 0
         status = ioctl(mFd, AUDIO_START, &acdb_id);
@@ -325,7 +325,7 @@ status_t AudioHardware::AudioStreamOutQ5V2::setParameters(const String8& keyValu
 String8 AudioHardware::AudioStreamOutQ5V2::getParameters(const String8& keys)
 {
     AudioParameter param = AudioParameter(keys);
-    LOGV("AudioStreamOutQ5V2::getParameters() %s", param.toString().string());
+    ALOGV("AudioStreamOutQ5V2::getParameters() %s", param.toString().string());
     return param.toString();
 }
 

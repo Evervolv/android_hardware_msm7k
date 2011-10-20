@@ -156,10 +156,10 @@ AudioHardware::AudioHardware() :
     }
 
     mNumBTEndpoints = snd_get_num();
-    LOGV("mNumBTEndpoints = %d", mNumBTEndpoints);
+    ALOGV("mNumBTEndpoints = %d", mNumBTEndpoints);
     mBTEndpoints = new msm_bt_endpoint[mNumBTEndpoints];
     mInit = true;
-    LOGV("constructed %d SND endpoints)", mNumBTEndpoints);
+    ALOGV("constructed %d SND endpoints)", mNumBTEndpoints);
     ept = mBTEndpoints;
     snd_get_bt_endpoint = (int (*)(msm_bt_endpoint *))::dlsym(acoustic, "snd_get_bt_endpoint");
     if ((*snd_get_bt_endpoint) == 0 ) {
@@ -169,7 +169,7 @@ AudioHardware::AudioHardware() :
     snd_get_bt_endpoint(mBTEndpoints);
 
     for (int i = 0; i < mNumBTEndpoints; i++) {
-        LOGV("BT name %s (tx,rx)=(%d,%d)", mBTEndpoints[i].name, mBTEndpoints[i].tx, mBTEndpoints[i].rx);
+        ALOGV("BT name %s (tx,rx)=(%d,%d)", mBTEndpoints[i].name, mBTEndpoints[i].tx, mBTEndpoints[i].rx);
     }
 
     // reset voice mode in case media_server crashed and restarted while in call
@@ -186,21 +186,21 @@ AudioHardware::AudioHardware() :
     // Check the system property to enable or not the special recording modes
     property_get("media.a1026.enableA1026", value, "1");
     enable1026 = atoi(value);
-    LOGV("Enable mode selection for A1026 is %d", enable1026);
+    ALOGV("Enable mode selection for A1026 is %d", enable1026);
     // Check the system property for which VR mode to use
     property_get("media.a1026.nsForVoiceRec", value, "0");
     vr_uses_ns = atoi(value);
-    LOGV("Using Noise Suppression for Voice Rec is %d", vr_uses_ns);
+    ALOGV("Using Noise Suppression for Voice Rec is %d", vr_uses_ns);
 
     // Check the system property for enable or not the ALT function
     property_get("htc.audio.alt.enable", value, "0");
     alt_enable = atoi(value);
-    LOGV("Enable ALT function: %d", alt_enable);
+    ALOGV("Enable ALT function: %d", alt_enable);
 
     // Check the system property for enable or not the HAC function
     property_get("htc.audio.hac.enable", value, "0");
     hac_enable = atoi(value);
-    LOGV("Enable HAC function: %d", hac_enable);
+    ALOGV("Enable HAC function: %d", hac_enable);
 
     mInit = true;
 }
@@ -388,7 +388,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
     const char HAC_VALUE_ON[] = "ON";
 
 
-    LOGV("setParameters() %s", keyValuePairs.string());
+    ALOGV("setParameters() %s", keyValuePairs.string());
 
     if (keyValuePairs.length() == 0) return BAD_VALUE;
 
@@ -464,7 +464,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
                         return -1;
                     }
                 }
-                LOGV("Setting noise suppression %s", value.string());
+                ALOGV("Setting noise suppression %s", value.string());
 
                 int rc = ioctl(fd_a1026, A1026_SET_NS_STATE, &noiseSuppressionState);
                 if (!rc) {
@@ -497,7 +497,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
         }
 
         if (ttyMode != mTTYMode) {
-            LOGV("new tty mode %d", ttyMode);
+            ALOGV("new tty mode %d", ttyMode);
             mTTYMode = ttyMode;
             doRouting();
         }
@@ -513,7 +513,7 @@ String8 AudioHardware::getParameters(const String8& keys)
     String8 value;
     String8 key;
 
-    LOGV("getParameters() %s", keys.string());
+    ALOGV("getParameters() %s", keys.string());
 
     key = "noise_suppression";
     if (request.get(key, value) == NO_ERROR) {
@@ -851,7 +851,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
         if (mRecordState)
             tx_acdb_id = getACDB(MOD_REC, device);
     }
-    LOGV("doAudioRouteOrMute: rx acdb %d, tx acdb %d\n", rx_acdb_id, tx_acdb_id);
+    ALOGV("doAudioRouteOrMute: rx acdb %d, tx acdb %d\n", rx_acdb_id, tx_acdb_id);
 
     return do_route_audio_dev_ctrl(device, mMode == AudioSystem::MODE_IN_CALL, rx_acdb_id, tx_acdb_id);
 }
@@ -1053,7 +1053,7 @@ uint32_t AudioHardware::getACDB(int mode, int device)
                 break;
         }
     }
-    LOGV("getACDB, return ID %d\n", acdb_id);
+    ALOGV("getACDB, return ID %d\n", acdb_id);
     return acdb_id;
 }
 
@@ -1141,10 +1141,10 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_TTY_VCO:
 	            if (enable1026) {
                     new_pathid = A1026_PATH_INCALL_RECEIVER;
-                    LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
+                    ALOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
 	            } else {
 	                new_pathid = A1026_PATH_INCALL_NO_NS_RECEIVER;
-	                LOGV("A1026 control: new path is A1026_PATH_INCALL_NO_NS_RECEIVER");
+	                ALOGV("A1026 control: new path is A1026_PATH_INCALL_NO_NS_RECEIVER");
 	            }
 	            break;
 	        case SND_DEVICE_HEADSET:
@@ -1153,24 +1153,24 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_FM_SPEAKER:
 	        case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
 	            new_pathid = A1026_PATH_INCALL_HEADSET;
-	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
+	            ALOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
 	        case SND_DEVICE_SPEAKER:
 	            //TODO: what do we do for camcorder when in call?
 	        case SND_DEVICE_SPEAKER_BACK_MIC:
 	            new_pathid = A1026_PATH_INCALL_SPEAKER;
-	            LOGV("A1026 control: new path is A1026_PATH_INCALL_SPEAKER");
+	            ALOGV("A1026 control: new path is A1026_PATH_INCALL_SPEAKER");
 	            break;
 	        case SND_DEVICE_BT:
 	        case SND_DEVICE_BT_EC_OFF:
 	        case SND_DEVICE_CARKIT:
 	            new_pathid = A1026_PATH_INCALL_BT;
-	            LOGV("A1026 control: new path is A1026_PATH_INCALL_BT");
+	            ALOGV("A1026 control: new path is A1026_PATH_INCALL_BT");
 	            break;
 	        case SND_DEVICE_TTY_HCO:
 	        case SND_DEVICE_TTY_FULL:
 	            new_pathid = A1026_PATH_INCALL_TTY;
-	            LOGV("A1026 control: new path is A1026_PATH_INCALL_TTY");
+	            ALOGV("A1026 control: new path is A1026_PATH_INCALL_TTY");
 	            break;
 	        default:
 	            break;
@@ -1182,10 +1182,10 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_TTY_VCO:
 	            if (enable1026) {
 	                new_pathid = A1026_PATH_INCALL_RECEIVER; /* NS CT mode, Dual MIC */
-                    LOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
+                    ALOGV("A1026 control: new path is A1026_PATH_INCALL_RECEIVER");
 	            } else {
 	                new_pathid = A1026_PATH_INCALL_NO_NS_RECEIVER;
-	                LOGV("A1026 control: new path is A1026_PATH_INCALL_NO_NS_RECEIVER");
+	                ALOGV("A1026 control: new path is A1026_PATH_INCALL_NO_NS_RECEIVER");
 	            }
 	            break;
 	        case SND_DEVICE_HEADSET:
@@ -1193,22 +1193,22 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        case SND_DEVICE_FM_HEADSET:
 	        case SND_DEVICE_FM_SPEAKER:
 	            new_pathid = A1026_PATH_INCALL_HEADSET; /* NS disable, Headset MIC */
-	            LOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
+	            ALOGV("A1026 control: new path is A1026_PATH_INCALL_HEADSET");
 	            break;
 	        case SND_DEVICE_SPEAKER:
 	            new_pathid = A1026_PATH_INCALL_SPEAKER; /* NS FT mode, Main MIC */
-	            LOGV("A1026 control: new path is A1026_PATH_INCALL_SPEAKER");
+	            ALOGV("A1026 control: new path is A1026_PATH_INCALL_SPEAKER");
 	            break;
 	        case SND_DEVICE_BT:
 	        case SND_DEVICE_BT_EC_OFF:
 	        case SND_DEVICE_CARKIT:
 	            new_pathid = A1026_PATH_INCALL_BT; /* QCOM NS, BT MIC */
-	            LOGV("A1026 control: new path is A1026_PATH_INCALL_BT");
+	            ALOGV("A1026 control: new path is A1026_PATH_INCALL_BT");
 	            break;
 	        case SND_DEVICE_TTY_HCO:
 	        case SND_DEVICE_TTY_FULL:
 	            new_pathid = A1026_PATH_INCALL_TTY;
-	            LOGV("A1026 control: new path is A1026_PATH_INCALL_TTY");
+	            ALOGV("A1026 control: new path is A1026_PATH_INCALL_TTY");
 	            break;
 	        default:
 	            break;
@@ -1223,14 +1223,14 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        if (vr_mode_enabled) {
 	            if (vr_uses_ns) {
 	                new_pathid = A1026_PATH_VR_NS_RECEIVER;
-	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_RECEIVER");
+	                ALOGV("A1026 control: new path is A1026_PATH_VR_NS_RECEIVER");
 	            } else {
 	                new_pathid = A1026_PATH_VR_NO_NS_RECEIVER;
-	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_RECEIVER");
+	                ALOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_RECEIVER");
 	            }
 	        } else {
 	            new_pathid = A1026_PATH_RECORD_RECEIVER; /* INT-MIC Recording: NS disable, Main MIC */
-                LOGV("A1026 control: new path is A1026_PATH_RECORD_RECEIVER");
+                ALOGV("A1026 control: new path is A1026_PATH_RECORD_RECEIVER");
 	        }
 	        break;
         case SND_DEVICE_HEADSET:
@@ -1240,14 +1240,14 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        if (vr_mode_enabled) {
 	            if (vr_uses_ns) {
 	                new_pathid = A1026_PATH_VR_NS_HEADSET;
-	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_HEADSET");
+	                ALOGV("A1026 control: new path is A1026_PATH_VR_NS_HEADSET");
 	            } else {
 	                new_pathid = A1026_PATH_VR_NO_NS_HEADSET;
-	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_HEADSET");
+	                ALOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_HEADSET");
 	            }
 	        } else {
 	            new_pathid = A1026_PATH_RECORD_HEADSET; /* EXT-MIC Recording: NS disable, Headset MIC */
-	            LOGV("A1026 control: new path is A1026_PATH_RECORD_HEADSET");
+	            ALOGV("A1026 control: new path is A1026_PATH_RECORD_HEADSET");
 	        }
 	        break;
         case SND_DEVICE_SPEAKER_BACK_MIC:
@@ -1255,7 +1255,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         case SND_DEVICE_HANDSET_BACK_MIC:
         case SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC:
 	        new_pathid = A1026_PATH_CAMCORDER; /* CAM-Coder: NS FT mode, Back MIC */
-	        LOGV("A1026 control: new path is A1026_PATH_CAMCORDER");
+	        ALOGV("A1026 control: new path is A1026_PATH_CAMCORDER");
 	        break;
         case SND_DEVICE_BT:
         case SND_DEVICE_BT_EC_OFF:
@@ -1263,14 +1263,14 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
 	        if (vr_mode_enabled) {
 	            if (vr_uses_ns) {
 	                new_pathid = A1026_PATH_VR_NS_BT;
-	                LOGV("A1026 control: new path is A1026_PATH_VR_NS_BT");
+	                ALOGV("A1026 control: new path is A1026_PATH_VR_NS_BT");
 	            } else {
 	                new_pathid = A1026_PATH_VR_NO_NS_BT;
-	                LOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_BT");
+	                ALOGV("A1026 control: new path is A1026_PATH_VR_NO_NS_BT");
 	            }
 	        } else {
 	            new_pathid = A1026_PATH_RECORD_BT; /* BT MIC */
-	            LOGV("A1026 control: new path is A1026_PATH_RECORD_BT");
+	            ALOGV("A1026 control: new path is A1026_PATH_RECORD_BT");
 	        }
 	        break;
         default:
@@ -1283,7 +1283,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         case SND_DEVICE_BT_EC_OFF:
         case SND_DEVICE_CARKIT:
             new_pathid = A1026_PATH_RECORD_BT; /* BT MIC */
-            LOGV("A1026 control: new path is A1026_PATH_RECORD_BT");
+            ALOGV("A1026 control: new path is A1026_PATH_RECORD_BT");
             break;
         default:
             new_pathid = A1026_PATH_SUSPEND;
@@ -1589,11 +1589,11 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
 
     if (mStandby) {
 
-        LOGV("acquire output wakelock");
+        ALOGV("acquire output wakelock");
         acquire_wake_lock(PARTIAL_WAKE_LOCK, kOutputWakelockStr);
 
         // open driver
-        LOGV("open pcm_out driver");
+        ALOGV("open pcm_out driver");
         status = ::open("/dev/msm_pcm_out", O_RDWR);
         if (status < 0) {
             if (errCount++ < 10) {
@@ -1606,7 +1606,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         mStandby = false;
 
         // configuration
-        LOGV("get config");
+        ALOGV("get config");
         struct msm_audio_config config;
         status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
         if (status < 0) {
@@ -1614,7 +1614,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
             goto Error;
         }
 
-        LOGV("set pcm_out config");
+        ALOGV("set pcm_out config");
         config.channel_count = AudioSystem::popCount(channels());
         config.sample_rate = mSampleRate;
         config.buffer_size = mBufferSize;
@@ -1626,10 +1626,10 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
             goto Error;
         }
 
-        LOGV("buffer_size: %u", config.buffer_size);
-        LOGV("buffer_count: %u", config.buffer_count);
-        LOGV("channel_count: %u", config.channel_count);
-        LOGV("sample_rate: %u", config.sample_rate);
+        ALOGV("buffer_size: %u", config.buffer_size);
+        ALOGV("buffer_count: %u", config.buffer_count);
+        ALOGV("channel_count: %u", config.channel_count);
+        ALOGV("sample_rate: %u", config.sample_rate);
 
         uint32_t acdb_id = mHardware->getACDB(MOD_PLAY, mHardware->get_snd_dev());
         status = ioctl(mFd, AUDIO_START, &acdb_id);
@@ -1679,7 +1679,7 @@ status_t AudioHardware::AudioStreamOutMSM72xx::standby()
             ::close(mFd);
             mFd = -1;
         }
-        LOGV("release output wakelock");
+        ALOGV("release output wakelock");
         release_wake_lock(kOutputWakelockStr);
         mStandby = true;
     }
@@ -1727,11 +1727,11 @@ status_t AudioHardware::AudioStreamOutMSM72xx::setParameters(const String8& keyV
     String8 key = String8(AudioParameter::keyRouting);
     status_t status = NO_ERROR;
     int device;
-    LOGV("AudioStreamOutMSM72xx::setParameters() %s", keyValuePairs.string());
+    ALOGV("AudioStreamOutMSM72xx::setParameters() %s", keyValuePairs.string());
 
     if (param.getInt(key, device) == NO_ERROR) {
         mDevices = device;
-        LOGV("set output routing %x", mDevices);
+        ALOGV("set output routing %x", mDevices);
         status = mHardware->doRouting();
         param.remove(key);
     }
@@ -1749,11 +1749,11 @@ String8 AudioHardware::AudioStreamOutMSM72xx::getParameters(const String8& keys)
     String8 key = String8(AudioParameter::keyRouting);
 
     if (param.get(key, value) == NO_ERROR) {
-        LOGV("get routing %x", mDevices);
+        ALOGV("get routing %x", mDevices);
         param.addInt(key, (int)mDevices);
     }
 
-    LOGV("AudioStreamOutMSM72xx::getParameters() %s", param.toString().string());
+    ALOGV("AudioStreamOutMSM72xx::getParameters() %s", param.toString().string());
     return param.toString();
 }
 
@@ -1798,7 +1798,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
 
     mHardware = hw;
 
-    LOGV("AudioStreamInMSM72xx::set(%d, %d, %u)", *pFormat, *pChannels, *pRate);
+    ALOGV("AudioStreamInMSM72xx::set(%d, %d, %u)", *pFormat, *pChannels, *pRate);
     if (mFd >= 0) {
         LOGE("Audio record already open");
         return -EPERM;
@@ -1816,13 +1816,13 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
 
 AudioHardware::AudioStreamInMSM72xx::~AudioStreamInMSM72xx()
 {
-    LOGV("AudioStreamInMSM72xx destructor");
+    ALOGV("AudioStreamInMSM72xx destructor");
     standby();
 }
 
 ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 {
-//    LOGV("AudioStreamInMSM72xx::read(%p, %ld)", buffer, bytes);
+//    ALOGV("AudioStreamInMSM72xx::read(%p, %ld)", buffer, bytes);
     if (!mHardware) return -1;
 
     size_t count = bytes;
@@ -1832,13 +1832,13 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
     if (mStandby) {
         {   // scope for the lock
             Mutex::Autolock lock(mHardware->mLock);
-            LOGV("acquire input wakelock");
+            ALOGV("acquire input wakelock");
             acquire_wake_lock(PARTIAL_WAKE_LOCK, kInputWakelockStr);
             // open audio input device
             status = ::open("/dev/msm_pcm_in", O_RDWR);
             if (status < 0) {
                 LOGE("Cannot open /dev/msm_pcm_in errno: %d", errno);
-                LOGV("release input wakelock");
+                ALOGV("release input wakelock");
                 release_wake_lock(kInputWakelockStr);
                 goto Error;
             }
@@ -1846,7 +1846,7 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
             mStandby = false;
 
             // configuration
-            LOGV("get config");
+            ALOGV("get config");
             struct msm_audio_config config;
             status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
             if (status < 0) {
@@ -1854,7 +1854,7 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
                 goto Error;
             }
 
-            LOGV("set config");
+            ALOGV("set config");
             config.channel_count = AudioSystem::popCount(mChannels);
             config.sample_rate = mSampleRate;
             config.buffer_size = mBufferSize;
@@ -1866,10 +1866,10 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
                 goto Error;
             }
 
-            LOGV("buffer_size: %u", config.buffer_size);
-            LOGV("buffer_count: %u", config.buffer_count);
-            LOGV("channel_count: %u", config.channel_count);
-            LOGV("sample_rate: %u", config.sample_rate);
+            ALOGV("buffer_size: %u", config.buffer_size);
+            ALOGV("buffer_count: %u", config.buffer_count);
+            ALOGV("channel_count: %u", config.channel_count);
+            ALOGV("sample_rate: %u", config.sample_rate);
         }
 
         mHardware->set_mRecordState(1);
@@ -1917,7 +1917,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::standby()
             ::close(mFd);
             mFd = -1;
         }
-        LOGV("release input wakelock");
+        ALOGV("release input wakelock");
         release_wake_lock(kInputWakelockStr);
 
         mStandby = true;
@@ -1971,11 +1971,11 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
     int device;
     String8 key = String8(AudioParameter::keyInputSource);
     int source;
-    LOGV("AudioStreamInMSM72xx::setParameters() %s", keyValuePairs.string());
+    ALOGV("AudioStreamInMSM72xx::setParameters() %s", keyValuePairs.string());
 
     // reading input source for voice recognition mode parameter
     if (param.getInt(key, source) == NO_ERROR) {
-        LOGV("set input source %d", source);
+        ALOGV("set input source %d", source);
         int uses_vr = (source == AUDIO_SOURCE_VOICE_RECOGNITION);
         vr_mode_change = (vr_mode_enabled != uses_vr);
         vr_mode_enabled = uses_vr;
@@ -1985,7 +1985,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
     // reading routing parameter
     key = String8(AudioParameter::keyRouting);
     if (param.getInt(key, device) == NO_ERROR) {
-        LOGV("set input routing %x", device);
+        ALOGV("set input routing %x", device);
         if (device & (device - 1)) {
             status = BAD_VALUE;
         } else {
@@ -2008,11 +2008,11 @@ String8 AudioHardware::AudioStreamInMSM72xx::getParameters(const String8& keys)
     String8 key = String8(AudioParameter::keyRouting);
 
     if (param.get(key, value) == NO_ERROR) {
-        LOGV("get routing %x", mDevices);
+        ALOGV("get routing %x", mDevices);
         param.addInt(key, (int)mDevices);
     }
 
-    LOGV("AudioStreamInMSM72xx::getParameters() %s", param.toString().string());
+    ALOGV("AudioStreamInMSM72xx::getParameters() %s", param.toString().string());
     return param.toString();
 }
 

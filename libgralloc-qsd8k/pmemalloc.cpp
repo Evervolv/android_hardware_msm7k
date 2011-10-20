@@ -32,8 +32,8 @@
 #include "pmemalloc.h"
 
 
-#define BEGIN_FUNC LOGV("%s begin", __PRETTY_FUNCTION__)
-#define END_FUNC LOGV("%s end", __PRETTY_FUNCTION__)
+#define BEGIN_FUNC ALOGV("%s begin", __PRETTY_FUNCTION__)
+#define END_FUNC ALOGV("%s end", __PRETTY_FUNCTION__)
 
 
 static int get_open_flags(int usage) {
@@ -179,7 +179,7 @@ int PmemUserspaceAllocator::alloc_pmem_buffer(size_t size, int usage,
                 allocator.deallocate(offset);
                 fd = -1;
             } else {
-                LOGV("%s: mapped fd %d at offset %d, size %d", pmemdev, fd, offset, size);
+                ALOGV("%s: mapped fd %d at offset %d, size %d", pmemdev, fd, offset, size);
                 memset((char*)base + offset, 0, size);
                 *pBase = base;
                 *pOffset = offset;

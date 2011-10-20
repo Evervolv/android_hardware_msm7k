@@ -134,7 +134,7 @@ handle_trackball_light_locked(struct light_device_t* dev)
     if (mode == 7 && g_backlight) {
         mode = 0;
     }
-    LOGV("%s g_backlight = %d, mode = %d, g_attention = %d\n",
+    ALOGV("%s g_backlight = %d, mode = %d, g_attention = %d\n",
         __func__, g_backlight, mode, g_attention);
 
     // If the value isn't changing, don't set it, because this
@@ -311,7 +311,7 @@ set_light_notifications(struct light_device_t* dev,
 {
     pthread_mutex_lock(&g_lock);
     g_notification = *state;
-    LOGV("set_light_notifications g_trackball=%d color=0x%08x",
+    ALOGV("set_light_notifications g_trackball=%d color=0x%08x",
             g_trackball, state->color);
     if (g_haveTrackballLight) {
         handle_trackball_light_locked(dev);
@@ -326,7 +326,7 @@ set_light_attention(struct light_device_t* dev,
         struct light_state_t const* state)
 {
     pthread_mutex_lock(&g_lock);
-    LOGV("set_light_attention g_trackball=%d color=0x%08x",
+    ALOGV("set_light_attention g_trackball=%d color=0x%08x",
             g_trackball, state->color);
     if (state->flashMode == LIGHT_FLASH_HARDWARE) {
         g_attention = state->flashOnMS;

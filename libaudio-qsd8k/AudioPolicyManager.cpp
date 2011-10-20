@@ -55,7 +55,7 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
 
     if (fromCache) {
         device = mDeviceForStrategy[strategy];
-        LOGV("getDeviceForStrategy() from cache strategy %d, device %x", strategy, device);
+        ALOGV("getDeviceForStrategy() from cache strategy %d, device %x", strategy, device);
         return device;
     }
 
@@ -220,7 +220,7 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
             !AudioSystem::isA2dpDevice((AudioSystem::audio_devices)device) &&
             device != getDeviceForStrategy(STRATEGY_PHONE, false)) {
             device = 0;
-            LOGV("getDeviceForStrategy() incompatible media and phone devices");
+            ALOGV("getDeviceForStrategy() incompatible media and phone devices");
         }
         } break;
 
@@ -229,7 +229,7 @@ uint32_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strategy, boo
         break;
     }
 
-    LOGV("getDeviceForStrategy() strategy %d, device %x", strategy, device);
+    ALOGV("getDeviceForStrategy() strategy %d, device %x", strategy, device);
     return device;
 }
 
@@ -257,7 +257,7 @@ float AudioPolicyManager::computeVolume(int stream, int index, audio_io_handle_t
     // avoid saturation
     if (mPhoneState == AudioSystem::MODE_IN_CALL && AudioSystem::isBluetoothScoDevice((AudioSystem::audio_devices)device)) {
         if (volume > IN_CALL_SCO_VOLUME_MAX) {
-            LOGV("computeVolume limiting SYSTEM volume %f to %f",volume, IN_CALL_SCO_VOLUME_MAX);
+            ALOGV("computeVolume limiting SYSTEM volume %f to %f",volume, IN_CALL_SCO_VOLUME_MAX);
             volume = IN_CALL_SCO_VOLUME_MAX;
         }
     }
