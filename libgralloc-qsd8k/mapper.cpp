@@ -25,9 +25,11 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <linux/ashmem.h>
 
 #include <cutils/log.h>
 #include <cutils/atomic.h>
+#include <cutils/ashmem.h>
 
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
@@ -55,13 +57,19 @@ static int gralloc_map(gralloc_module_t const* module,
         void** vaddr)
 {
     private_handle_t* hnd = (private_handle_t*)handle;
+    void *mappedAddress;
     if (!(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)) {
         size_t size = hnd->size;
 #if PMEM_HACK
         size += hnd->offset;
 #endif
-        void* mappedAddress = mmap(0, size,
+        if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM) {
+            mappedAddress = mmap(0, size,
+                PROT_READ|PROT_WRITE, MAP_SHARED | MAP_POPULATE, hnd->fd, 0);
+        } else {
+            mappedAddress = mmap(0, size,
                 PROT_READ|PROT_WRITE, MAP_SHARED, hnd->fd, 0);
+        }
         if (mappedAddress == MAP_FAILED) {
             LOGE("Could not mmap handle %p, fd=%d (%s)",
                     handle, hnd->fd, strerror(errno));
@@ -171,8 +179,9 @@ int terminateBuffer(gralloc_module_t const* module,
 
     if (hnd->lockState & private_handle_t::LOCK_STATE_MAPPED) {
         // this buffer was mapped, unmap it now
-        if ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) ||
-            (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP)) {
+        if (hnd->flags & (private_handle_t::PRIV_FLAGS_USES_PMEM |
+                          private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP |
+                          private_handle_t::PRIV_FLAGS_USES_ASHMEM)) {
             if (hnd->pid != getpid()) {
                 // ... unless it's a "master" pmem buffer, that is a buffer
                 // mapped in the process it's been allocated.
@@ -180,6 +189,7 @@ int terminateBuffer(gralloc_module_t const* module,
                 gralloc_unmap(module, hnd);
             }
         } else {
+            LOGE("terminateBuffer: unmapping a non pmem/ashmem buffer flags = 0x%x", hnd->flags);
             gralloc_unmap(module, hnd);
         }
     }
@@ -239,12 +249,7 @@ int gralloc_lock(gralloc_module_t const* module,
     // if requesting sw write for non-framebuffer handles, flag for
     // flushing at unlock
 
-    const uint32_t pmemMask =
-            private_handle_t::PRIV_FLAGS_USES_PMEM |
-            private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP;
-
     if ((usage & GRALLOC_USAGE_SW_WRITE_MASK) &&
-            (hnd->flags & pmemMask) &&
             !(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)) {
         hnd->flags |= private_handle_t::PRIV_FLAGS_NEEDS_FLUSH;
     }
@@ -279,14 +284,21 @@ int gralloc_unlock(gralloc_module_t const* module,
     int32_t current_value, new_value;
 
     if (hnd->flags & private_handle_t::PRIV_FLAGS_NEEDS_FLUSH) {
-        struct pmem_region region;
         int err;
+        if (hnd->flags & (private_handle_t::PRIV_FLAGS_USES_PMEM |
+                          private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP)) {
+            struct pmem_addr pmem_addr;
+            pmem_addr.vaddr = hnd->base;
+            pmem_addr.offset = hnd->offset;
+            pmem_addr.length = hnd->size;
+            err = ioctl( hnd->fd, PMEM_CLEAN_CACHES,  &pmem_addr);
+        } else if ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM)) {
+            unsigned long addr = hnd->base + hnd->offset;
+            err = ioctl(hnd->fd, ASHMEM_CACHE_FLUSH_RANGE, NULL);
+        }         
 
-        region.offset = hnd->offset;
-        region.len = hnd->size;
-        err = ioctl(hnd->fd, PMEM_CLEAN_CACHES, &region);
-        LOGE_IF(err < 0, "cannot flush handle %p (offs=%x len=%x)\n",
-                hnd, hnd->offset, hnd->size);
+        LOGE_IF(err < 0, "cannot flush handle %p (offs=%x len=%x, flags = 0x%x) err=%s\n",
+                hnd, hnd->offset, hnd->size, hnd->flags, strerror(errno));
         hnd->flags &= ~private_handle_t::PRIV_FLAGS_NEEDS_FLUSH;
     }
 

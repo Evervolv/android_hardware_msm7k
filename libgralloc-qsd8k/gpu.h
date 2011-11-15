@@ -56,21 +56,29 @@ class gpu_context_t : public alloc_device_t {
             buffer_handle_t* pHandle);
     int gralloc_alloc_framebuffer(size_t size, int usage,
             buffer_handle_t* pHandle);
-    int gralloc_alloc_buffer(size_t size, int usage, buffer_handle_t* pHandle);
+    int gralloc_alloc_buffer(size_t size, int usage, buffer_handle_t* pHandle, int bufferType, int format,
+                             int width, int height);
     int free_impl(private_handle_t const* hnd);
     int alloc_impl(int w, int h, int format, int usage,
-            buffer_handle_t* pHandle, int* pStride);
+            buffer_handle_t* pHandle, int* pStride, int bufferSize = 0);
 
     static int gralloc_alloc(alloc_device_t* dev, int w, int h, int format,
             int usage, buffer_handle_t* pHandle, int* pStride);
     static int gralloc_free(alloc_device_t* dev, buffer_handle_t handle);
+    static int gralloc_alloc_size(alloc_device_t* dev, int w, int h, int format,
+            int usage, buffer_handle_t* pHandle, int* pStride, int bufferSize);
     static int gralloc_close(struct hw_device_t *dev);
+    int get_composition_type() const { return compositionType; }
 
  private:
 
     Deps& deps;
     PmemAllocator& pmemAllocator;
     PmemAllocator& pmemAdspAllocator;
+    int compositionType;
+    int alloc_ashmem_buffer(size_t size, unsigned int postfix, void** pBase,
+            int* pOffset, int* pFd);
+    void getGrallocInformationFromFormat(int inputFormat, int *colorFormat, int *bufferType);
 };
 
 #endif  // GRALLOC_QSD8K_GPU_H

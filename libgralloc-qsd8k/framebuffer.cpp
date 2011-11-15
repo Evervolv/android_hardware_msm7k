@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (c) 2010-2011 Code Aurora Forum. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,6 +42,9 @@
 
 #include "gralloc_priv.h"
 #include "gr.h"
+#ifdef NO_SURFACEFLINGER_SWAPINTERVAL
+#include <cutils/properties.h>
+#endif
 
 /*****************************************************************************/
 
@@ -68,9 +72,12 @@ static int fb_setSwapInterval(struct framebuffer_device_t* dev,
             int interval)
 {
     fb_context_t* ctx = (fb_context_t*)dev;
+    private_module_t* m = reinterpret_cast<private_module_t*>(
+            dev->common.module);
     if (interval < dev->minSwapInterval || interval > dev->maxSwapInterval)
         return -EINVAL;
-    // FIXME: implement fb_setSwapInterval
+
+    m->swapInterval = interval;
     return 0;
 }
 
@@ -175,6 +182,7 @@ int mapFrameBufferLocked(struct private_module_t* module)
     int fd = -1;
     int i=0;
     char name[64];
+    char property[PROPERTY_VALUE_MAX];
 
     while ((fd==-1) && device_template[i]) {
         snprintf(name, 64, device_template[i], 0);
@@ -206,32 +214,63 @@ int mapFrameBufferLocked(struct private_module_t* module)
     * big-endian byte order if bits_per_pixel is greater than 8.
     */
 
-    /*
-     * Explicitly request RGBA_8888
-     */
-    info.bits_per_pixel = 32;
-    info.red.offset     = 24;
-    info.red.length     = 8;
-    info.green.offset   = 16;
-    info.green.length   = 8;
-    info.blue.offset    = 8;
-    info.blue.length    = 8;
-    info.transp.offset  = 0;
-    info.transp.length  = 0;
+    if(info.bits_per_pixel == 32) {
+	/*
+	* Explicitly request RGBA_8888
+	*/
+	info.bits_per_pixel = 32;
+	info.red.offset     = 24;
+	info.red.length     = 8;
+	info.green.offset   = 16;
+	info.green.length   = 8;
+	info.blue.offset    = 8;
+	info.blue.length    = 8;
+	info.transp.offset  = 0;
+	info.transp.length  = 8;
 
-    /* Note: the GL driver does not have a r=8 g=8 b=8 a=0 config, so if we do
-     * not use the MDP for composition (i.e. hw composition == 0), ask for
-     * RGBA instead of RGBX. */
-    char property[PROPERTY_VALUE_MAX];
-    if (property_get("debug.sf.hw", property, NULL) > 0 && atoi(property) == 0)
-        module->fbFormat = HAL_PIXEL_FORMAT_RGBX_8888;
-    else
-        module->fbFormat = HAL_PIXEL_FORMAT_RGBA_8888;
-
+	/* Note: the GL driver does not have a r=8 g=8 b=8 a=0 config, so if we do
+	* not use the MDP for composition (i.e. hw composition == 0), ask for
+	* RGBA instead of RGBX. */
+	if (property_get("debug.sf.hw", property, NULL) > 0 && atoi(property) == 0)
+		module->fbFormat = HAL_PIXEL_FORMAT_RGBX_8888;
+	else if(property_get("debug.composition.type", property, NULL) > 0 && (strncmp(property, "mdp", 3) == 0))
+		module->fbFormat = HAL_PIXEL_FORMAT_RGBX_8888;
+	else
+		module->fbFormat = HAL_PIXEL_FORMAT_RGBA_8888;
+    } else {
+	/*
+	* Explicitly request 5/6/5
+	*/
+	info.bits_per_pixel = 16;
+	info.red.offset     = 11;
+	info.red.length     = 5;
+	info.green.offset   = 5;
+	info.green.length   = 6;
+	info.blue.offset    = 0;
+	info.blue.length    = 5;
+	info.transp.offset  = 0;
+	info.transp.length  = 0;
+	module->fbFormat = HAL_PIXEL_FORMAT_RGB_565;
+    }
     /*
      * Request NUM_BUFFERS screens (at lest 2 for page flipping)
      */
-    info.yres_virtual = info.yres * NUM_BUFFERS;
+    int numberOfBuffers = (int)(finfo.smem_len/(info.yres * info.xres * (info.bits_per_pixel/8)));
+    LOGV("num supported framebuffers in kernel = %d", numberOfBuffers);
+
+    if (property_get("debug.gr.numframebuffers", property, NULL) > 0) {
+        int num = atoi(property);
+        if ((num >= NUM_FRAMEBUFFERS_MIN) && (num <= NUM_FRAMEBUFFERS_MAX)) {
+            numberOfBuffers = num;
+        }
+    }
+
+    if (numberOfBuffers > NUM_FRAMEBUFFERS_MAX)
+        numberOfBuffers = NUM_FRAMEBUFFERS_MAX;
+
+    LOGE("We support %d buffers", numberOfBuffers);
+
+    info.yres_virtual = info.yres * numberOfBuffers;
 
 
     uint32_t flags = PAGE_FLIP;
@@ -252,22 +291,6 @@ int mapFrameBufferLocked(struct private_module_t* module)
     if (ioctl(fd, FBIOGET_VSCREENINFO, &info) == -1)
         return -errno;
 
-    uint64_t refreshQuotient =
-    (
-            uint64_t( info.upper_margin + info.lower_margin + info.yres )
-            * ( info.left_margin  + info.right_margin + info.xres )
-            * info.pixclock
-    );
-
-    /* Beware, info.pixclock might be 0 under emulation, so avoid a
-     * division-by-0 here (SIGFPE on ARM) */
-    int refreshRate = refreshQuotient > 0 ? (int)(1000000000000000LLU / refreshQuotient) : 0;
-
-    if (refreshRate == 0) {
-        // bleagh, bad info from the driver
-        refreshRate = 60*1000;  // 60 Hz
-    }
-
     if (int(info.width) <= 0 || int(info.height) <= 0) {
         // the driver doesn't return that information
         // default to 160 dpi
@@ -277,7 +300,8 @@ int mapFrameBufferLocked(struct private_module_t* module)
 
     float xdpi = (info.xres * 25.4f) / info.width;
     float ydpi = (info.yres * 25.4f) / info.height;
-    float fps  = refreshRate / 1000.0f;
+    //The reserved[4] field is used to store FPS by the driver.
+    float fps  = info.reserved[4];
 
     LOGI(   "using (fd=%d)\n"
             "id           = %s\n"
@@ -324,6 +348,22 @@ int mapFrameBufferLocked(struct private_module_t* module)
     module->ydpi = ydpi;
     module->fps = fps;
 
+#ifdef NO_SURFACEFLINGER_SWAPINTERVAL
+    char pval[PROPERTY_VALUE_MAX];
+    property_get("debug.gr.swapinterval", pval, "1");
+    module->swapInterval = atoi(pval);
+    if (module->swapInterval < private_module_t::PRIV_MIN_SWAP_INTERVAL ||
+        module->swapInterval > private_module_t::PRIV_MAX_SWAP_INTERVAL) {
+        module->swapInterval = 1;
+        LOGW("Out of range (%d to %d) value for debug.gr.swapinterval, using 1",
+             private_module_t::PRIV_MIN_SWAP_INTERVAL,
+             private_module_t::PRIV_MAX_SWAP_INTERVAL);
+    }
+
+#else
+    /* when surfaceflinger supports swapInterval then can just do this */
+    module->swapInterval = 1;
+#endif
     /*
      * map the framebuffer
      */
@@ -331,7 +371,7 @@ int mapFrameBufferLocked(struct private_module_t* module)
     int err;
     size_t fbSize = roundUpToPageSize(finfo.line_length * info.yres_virtual);
     module->framebuffer = new private_handle_t(dup(fd), fbSize,
-            private_handle_t::PRIV_FLAGS_USES_PMEM);
+            private_handle_t::PRIV_FLAGS_USES_PMEM, BUFFER_TYPE_UI, module->fbFormat, info.xres, info.yres);
 
     module->numBuffers = info.yres_virtual / info.yres;
     module->bufferMask = 0;
@@ -401,8 +441,8 @@ int fb_device_open(hw_module_t const* module, const char* name,
             const_cast<float&>(dev->device.xdpi) = m->xdpi;
             const_cast<float&>(dev->device.ydpi) = m->ydpi;
             const_cast<float&>(dev->device.fps) = m->fps;
-            const_cast<int&>(dev->device.minSwapInterval) = 1;
-            const_cast<int&>(dev->device.maxSwapInterval) = 1;
+            const_cast<int&>(dev->device.minSwapInterval) = private_module_t::PRIV_MIN_SWAP_INTERVAL;
+            const_cast<int&>(dev->device.maxSwapInterval) = private_module_t::PRIV_MAX_SWAP_INTERVAL;
 
             if (m->finfo.reserved[0] == 0x5444 &&
                     m->finfo.reserved[1] == 0x5055) {
@@ -412,6 +452,9 @@ int fb_device_open(hw_module_t const* module, const char* name,
 
             *device = &dev->device.common;
         }
+
+        // Close the gralloc module
+        gralloc_close(gralloc_device);
     }
     return status;
 }

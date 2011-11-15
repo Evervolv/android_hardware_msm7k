@@ -32,8 +32,29 @@
 enum {
     /* gralloc usage bit indicating a pmem_adsp allocation should be used */
     GRALLOC_USAGE_PRIVATE_PMEM_ADSP = GRALLOC_USAGE_PRIVATE_0,
+    GRALLOC_USAGE_PRIVATE_PMEM_SMIPOOL = GRALLOC_USAGE_PRIVATE_1,
+    GRALLOC_USAGE_PRIVATE_PMEM = GRALLOC_USAGE_PRIVATE_2,
 };
 
+enum {
+    GPU_COMPOSITION,
+    C2D_COMPOSITION,
+    MDP_COMPOSITION,
+    CPU_COMPOSITION,
+};
+
+/* numbers of max buffers for page flipping */
+#define NUM_FRAMEBUFFERS_MIN 2
+#define NUM_FRAMEBUFFERS_MAX 3
+
+/* number of default bufers for page flipping */
+#define NUM_DEF_FRAME_BUFFERS 2
+#define NO_SURFACEFLINGER_SWAPINTERVAL
+#define INTERLACE_MASK 0x80
+#define S3D_FORMAT_MASK 0xFF000
+#define COLOR_FORMAT(x) (x & 0xFFF) // Max range for colorFormats is 0 - FFF
+#define DEVICE_PMEM_ADSP "/dev/pmem_adsp"
+#define DEVICE_PMEM_SMIPOOL "/dev/pmem_smipool"
 /*****************************************************************************/
 
 enum {
@@ -51,8 +72,28 @@ enum {
     HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO    = 0x10A,
     HAL_PIXEL_FORMAT_YCrCb_422_SP           = 0x10B,
     HAL_PIXEL_FORMAT_YCrCb_420_SP_INTERLACE = 0x10C,
+    HAL_PIXEL_FORMAT_R_8                    = 0x10D,
+    HAL_PIXEL_FORMAT_RG_88                  = 0x10E,
+    HAL_PIXEL_FORMAT_INTERLACE              = 0x180,
 };
 
+/* possible formats for 3D content*/
+enum {
+    HAL_NO_3D                         = 0x0000,
+    HAL_3D_IN_SIDE_BY_SIDE_L_R        = 0x10000,
+    HAL_3D_IN_TOP_BOTTOM              = 0x20000,
+    HAL_3D_IN_INTERLEAVE              = 0x40000,
+    HAL_3D_IN_SIDE_BY_SIDE_R_L        = 0x80000,
+    HAL_3D_OUT_SIDE_BY_SIDE           = 0x1000,
+    HAL_3D_OUT_TOP_BOTTOM             = 0x2000,
+    HAL_3D_OUT_INTERLEAVE             = 0x4000,
+    HAL_3D_OUT_MONOSCOPIC             = 0x8000
+};
+
+enum {
+	BUFFER_TYPE_UI = 0,
+	BUFFER_TYPE_VIDEO
+};
 /*****************************************************************************/
 
 struct private_module_t;
@@ -75,11 +116,15 @@ struct private_module_t {
     float xdpi;
     float ydpi;
     float fps;
+    int swapInterval;
     
     enum {
         // flag to indicate we'll post this buffer
-        PRIV_USAGE_LOCKED_FOR_POST = 0x80000000
+        PRIV_USAGE_LOCKED_FOR_POST = 0x80000000,
+        PRIV_MIN_SWAP_INTERVAL = 0,
+        PRIV_MAX_SWAP_INTERVAL = 1,
     };
+
 };
 
 /*****************************************************************************/
@@ -97,6 +142,7 @@ struct private_handle_t {
         PRIV_FLAGS_USES_PMEM_ADSP = 0x00000004,
         PRIV_FLAGS_NEEDS_FLUSH    = 0x00000008,
         PRIV_FLAGS_USES_ASHMEM    = 0x00000010,
+        PRIV_FLAGS_FORMAT_CHANGED = 0x00000020,
     };
 
     enum {

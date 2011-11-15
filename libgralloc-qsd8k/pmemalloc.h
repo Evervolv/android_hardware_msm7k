@@ -36,7 +36,7 @@ class PmemAllocator {
     virtual void* get_base_address() = 0;
 
     virtual int alloc_pmem_buffer(size_t size, int usage, void** pBase,
-            int* pOffset, int* pFd) = 0;
+            int* pOffset, int* pFd, int format) = 0;
     virtual int free_pmem_buffer(size_t size, void* base, int offset, int fd) = 0;
 };
 
@@ -69,6 +69,7 @@ class PmemUserspaceAllocator: public PmemAllocator {
         virtual int connectPmem(int fd, int master_fd) = 0;
         virtual int mapPmem(int fd, int offset, size_t size) = 0;
         virtual int unmapPmem(int fd, int offset, size_t size) = 0;
+        virtual int cleanPmem(int fd, unsigned long base, int offset, size_t size) = 0;
 
         // C99
         virtual int getErrno() = 0;
@@ -89,7 +90,7 @@ class PmemUserspaceAllocator: public PmemAllocator {
     virtual int init_pmem_area_locked();
     virtual int init_pmem_area();
     virtual int alloc_pmem_buffer(size_t size, int usage, void** pBase,
-            int* pOffset, int* pFd);
+            int* pOffset, int* pFd, int format);
     virtual int free_pmem_buffer(size_t size, void* base, int offset, int fd);
 
 #ifndef ANDROID_OS
@@ -139,23 +140,22 @@ class PmemKernelAllocator: public PmemAllocator {
         virtual int munmap(void* start, size_t length) = 0;
         virtual int open(const char* pathname, int flags, int mode) = 0;
         virtual int close(int fd) = 0;
+        virtual int alignPmem(int fd, size_t size, int align) = 0;
     };
 
-    PmemKernelAllocator(Deps& deps, const char* pmemdev);
+    PmemKernelAllocator(Deps& deps);
     virtual ~PmemKernelAllocator();
 
     // Only valid after init_pmem_area() has completed successfully.
     virtual void* get_base_address();
 
     virtual int alloc_pmem_buffer(size_t size, int usage, void** pBase,
-            int* pOffset, int* pFd);
+            int* pOffset, int* pFd, int format);
     virtual int free_pmem_buffer(size_t size, void* base, int offset, int fd);
 
  private:
 
     Deps& deps;
-
-    const char* pmemdev;
 };
 
 #endif  // GRALLOC_QSD8K_PMEMALLOC_H
