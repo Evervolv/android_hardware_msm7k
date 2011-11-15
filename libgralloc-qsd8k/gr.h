@@ -25,9 +25,11 @@
 #endif
 #include <limits.h>
 #include <sys/cdefs.h>
+#include <string.h>
 #include <hardware/gralloc.h>
 #include <pthread.h>
 #include <errno.h>
+
 
 #include <cutils/native_handle.h>
 

@@ -96,6 +96,7 @@ struct private_handle_t {
         PRIV_FLAGS_USES_PMEM      = 0x00000002,
         PRIV_FLAGS_USES_PMEM_ADSP = 0x00000004,
         PRIV_FLAGS_NEEDS_FLUSH    = 0x00000008,
+        PRIV_FLAGS_USES_ASHMEM    = 0x00000010,
     };
 
     enum {
@@ -111,7 +112,7 @@ struct private_handle_t {
     int     flags;
     int     size;
     int     offset;
-    int     gpu_fd; // stored as an int, b/c we don't want it marshalled
+    int     bufferType;
 
     // FIXME: the attributes below should be out-of-line
     int     base;
@@ -119,15 +120,19 @@ struct private_handle_t {
     int     writeOwner;
     int     gpuaddr; // The gpu address mapped into the mmu. If using ashmem, set to 0 They don't care
     int     pid;
+    int     format;
+    int     width;
+    int     height;
 
 #ifdef __cplusplus
-    static const int sNumInts = 10;
+    static const int sNumInts = 13;
     static const int sNumFds = 1;
     static const int sMagic = 'gmsm';
 
-    private_handle_t(int fd, int size, int flags) :
-        fd(fd), magic(sMagic), flags(flags), size(size), offset(0), gpu_fd(-1),
-        base(0), lockState(0), writeOwner(0), gpuaddr(0), pid(getpid())
+    private_handle_t(int fd, int size, int flags, int bufferType, int format, int width, int height) :
+        fd(fd), magic(sMagic), flags(flags), size(size), offset(0), bufferType(bufferType),
+        base(0), lockState(0), writeOwner(0), gpuaddr(0), pid(getpid()), format(format), width(width),
+        height(height)
     {
         version = sizeof(native_handle);
         numInts = sNumInts;
