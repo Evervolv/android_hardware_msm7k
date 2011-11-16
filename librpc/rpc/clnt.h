@@ -93,11 +93,23 @@ enum clnt_stat {
    * asynchronous errors
    */
   RPC_INPROGRESS = 24,
-  RPC_STALERACHANDLE = 25
+  RPC_STALERACHANDLE = 25,
+  RPC_SUBSYSTEM_RESTART = 26
 };
 
 struct CLIENT;
 typedef struct CLIENT CLIENT;
+
+/* Reset notifiction callback.
+ *
+ * Called when the reset state changes for the client.
+ */
+typedef void (*clnt_reset_notif_cb)
+(
+  CLIENT* clnt,
+  enum rpc_reset_event event
+);
+
 /* client call callback. 
  * Callback called when the reply is recieved or there is an error in
  * getting reply.
@@ -210,6 +222,62 @@ extern bool_t clnt_freeres( CLIENT *xdr, xdrproc_t xdr_res, caddr_t res_ptr );
 extern void clnt_destroy( CLIENT *xdr );
 extern CLIENT * clnt_create ( char * host, uint32 prog, uint32 vers,
                               char * proto);
+
+/*===========================================================================
+FUNCTION clnt_register_reset_notification_cb
+
+DESCRIPTION
+  Registers a callback that is called if a subsystem restart (modem restart)
+  is encountered. If a callback already exists, it will be replaced with the
+  new function.
+
+  Note that this callback is made on the context of the
+  receive thread, so blocking calls cannot be made.
+
+  Two calls will be generated.  The first will be with an event type of
+  RPC_SUBSYSTEM_RESTART_BEGIN which signals that the modem has started its
+  reset.  Once the modem comes out of reset, another call will be generated
+  with the event type of RPC_SUBSYSTEM_RESTART_END.
+
+DEPENDENCIES
+  None.
+
+ARGUMENTS
+  client - pointer to the client
+  cb - callback function of type clnt_reset_notif_cb
+
+RETURN VALUE
+  0 - if successful
+  error code otherwise
+
+SIDE EFFECTS
+  None.
+===========================================================================*/
+extern int clnt_register_reset_notification_cb(CLIENT *client, clnt_reset_notif_cb cb);
+
+/*===========================================================================
+FUNCTION clnt_unregister_reset_notification_cb
+
+DESCRIPTION
+  Unregisters any callback registered by clnt_register_reset_notification_cb.
+
+  The previous callback function is returned.
+
+DEPENDENCIES
+  None.
+
+ARGUMENTS
+  client - pointer to the client
+
+RETURN VALUE
+  Pointer to previous callback (NULL if no previous callback registered).
+  NULL if client is NULL
+
+SIDE EFFECTS
+  None.
+===========================================================================*/
+extern clnt_reset_notif_cb clnt_unregister_reset_notification_cb(CLIENT *client);
+
 
 #ifdef __cplusplus
 }

@@ -592,6 +592,19 @@ CLIENT *clnt_create(
     return client;
 }
 
+int clnt_register_reset_notification_cb(CLIENT *client, clnt_reset_notif_cb cb) {
+    int ret = 1;
+
+
+    return ret;
+}
+
+clnt_reset_notif_cb clnt_unregister_reset_notification_cb(CLIENT *client) {
+    clnt_reset_notif_cb cb = NULL;
+
+    return cb;
+}
+
 void clnt_destroy(CLIENT *client) {
     if (client) {
         pthread_mutex_lock(&client->lock);

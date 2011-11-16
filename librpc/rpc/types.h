@@ -430,6 +430,14 @@ typedef struct rpc_cb_data_type {
   oncrpc_addr_type           cb_source;
 } rpc_cb_data_type;
 
+
+/* Events returned by the server and clients when a reset event occurs.
+ */
+enum rpc_reset_event {
+  RPC_SUBSYSTEM_RESTART_BEGIN,
+  RPC_SUBSYSTEM_RESTART_END
+};
+
 #ifdef __cplusplus
 }
 #endif
