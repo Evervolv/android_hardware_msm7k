@@ -21,12 +21,12 @@ msm7x30_dirs := $(common_msm_dirs) libaudio-msm7x30 liboverlay libcopybit libsen
 
 #For Dragon Board APQ8060, ALSA ADUIO is used for WOLFSON CODEC
 ifeq ($(strip $(BOARD_USES_ALSA_AUDIO)),true)
-  msm8660_dirs := $(common_msm_dirs) liboverlay libcopybit dspcrashd
+  msm8660_dirs := $(common_msm_dirs) dspcrashd
 else
-  msm8660_dirs := $(common_msm_dirs) libaudio-msm8660 liboverlay libcopybit dspcrashd
+  msm8660_dirs := $(common_msm_dirs) libaudio-msm8660 dspcrashd
 endif
-msm7x27a_dirs := $(common_msm_dirs) boot libaudio-msm7x27a libcopybit dspcrashd
-msm8960_dirs := $(common_msm_dirs) liboverlay libcopybit dspcrashd
+msm7x27a_dirs := $(common_msm_dirs) boot libaudio-msm7x27a dspcrashd
+msm8960_dirs := $(common_msm_dirs) dspcrashd
 
 ifeq ($(call is-board-platform-in-list,$(MSM7K_BOARD_PLATFORMS)),true)
   ifeq ($(call is-chipset-in-board-platform,msm7630),true)
