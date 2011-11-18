@@ -31,6 +31,7 @@
  * svc.h, Server-side remote procedure call interface.
  *
  * Copyright (C) 1984, Sun Microsystems, Inc.
+ * Copyright (c) 2011, Code Aurora Forum.
  */
 
 #ifndef _RPC_SVC_H
@@ -84,6 +85,17 @@ struct svc_req {
 #define __DISPATCH_FN_T
 typedef void (*__dispatch_fn_t) (struct svc_req*, SVCXPRT*);
 #endif
+
+
+/* Reset notifiction callback.
+ *
+ * Called when the reset state changes for the client.
+ */
+typedef void (*svc_reset_notif_cb)
+(
+  SVCXPRT* xprt,
+  enum rpc_reset_event event
+);
 
 /*
  * Transport registration.
@@ -194,6 +206,58 @@ extern bool_t svc_freeargs(SVCXPRT *xdr, xdrproc_t xdr_args, caddr_t args_ptr);
 
 extern bool_t	svc_sendreply (SVCXPRT *xprt, xdrproc_t __xdr_results,
 			       caddr_t __xdr_location);
+
+/*===========================================================================
+FUNCTION svc_register_reset_notification_cb
+
+DESCRIPTION
+  Registers a callback that is called if a subsystem restart (modem restart)
+  is encountered. Note that this callback is made on the context of the
+  servers callback or server thread, so blocking calls cannot be made.
+
+  Two calls will be generated.  The first will be with an event type of
+  RPC_SUBSYSTEM_RESTART_BEGIN which signals that the modem has started its
+  reset.  Once the modem comes out of reset, another call will be generated
+  with the event type of RPC_SUBSYSTEM_RESTART_END.
+
+DEPENDENCIES
+  None.
+
+ARGUMENTS
+  xprt - pointer to the client
+  cb - callback function of type svc_reset_notif_cb
+
+RETURN VALUE
+  0 - if successful
+  error code otherwise
+
+SIDE EFFECTS
+  None.
+===========================================================================*/
+extern int svc_register_reset_notification_cb(SVCXPRT *xprt, svc_reset_notif_cb cb);
+
+/*===========================================================================
+FUNCTION svc_unregister_reset_notification_cb
+
+DESCRIPTION
+  Unregisters any callback registered by svc_register_reset_notification_cb.
+
+  The previous callback function is returned.
+
+DEPENDENCIES
+  None.
+
+ARGUMENTS
+  xprt - pointer to the server transport
+
+RETURN VALUE
+  Pointer to previous callback (NULL if no previous callback registered).
+  NULL if xprt is NULL
+
+SIDE EFFECTS
+  None.
+===========================================================================*/
+extern svc_reset_notif_cb svc_unregister_reset_notification_cb(SVCXPRT *xprt);
 
 /*
  * Socket to use on svcxxx_create call to get default socket

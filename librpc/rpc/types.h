@@ -31,7 +31,7 @@
 /*
  * Rpc additions to <sys/types.h>
  */
-
+/* Copyright (c) 2011, Code Aurora Forum. */
 #ifndef RPCXDRTYPES_H
 #define RPCXDRTYPES_H
 
@@ -384,7 +384,7 @@ typedef struct xdr_ops_struct xdr_ops_s_type;
   for servers.
   ===========================================================================*/
 
-#define RPCROUTER_MSGSIZE_MAX (2048)
+#define RPCROUTER_MSGSIZE_MAX (18432)
 
 struct xdr_struct {
   const xdr_ops_s_type      *xops;
@@ -412,6 +412,7 @@ struct xdr_struct {
   uint8                      in_msg[RPCROUTER_MSGSIZE_MAX];
   int                        in_next;
   int                        in_len;
+  int                        xdr_err;
 };
 
 // Transport flag definitions

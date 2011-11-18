@@ -39,6 +39,8 @@
  * Copyright (C) 1984, Sun Microsystems, Inc.
  */
 
+/* Copyright (c) 2010-2011, Code Aurora Forum. */
+
 #include <rpc/rpc.h>
 #include <sys/select.h>
 #include <sys/types.h>
@@ -86,7 +88,11 @@ struct SVCXPRT {
     pthread_mutexattr_t lock_attr;
     pthread_mutex_t lock;
     registered_server *servers;
+    int num_cb_servers;
     volatile int num_servers;
+
+    volatile int in_reset;
+    svc_reset_notif_cb reset_cb;
 };
 
 static pthread_mutex_t xprt_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -104,6 +110,26 @@ SVCXPRT *the_xprt; /* FIXME: have a list or something */
  */
 
 void svc_dispatch(registered_server *svc, SVCXPRT *xprt);
+
+int svc_is_in_reset(void* xprt) {
+    return ((SVCXPRT *)xprt)->in_reset;
+}
+
+void svc_set_in_reset(void* xprt, int val) {
+    ((SVCXPRT *)xprt)->in_reset = val;
+}
+
+void svc_reset_cb(void* xprt, enum rpc_reset_event event) {
+    SVCXPRT *xprt_type = (SVCXPRT *)xprt;
+
+    pthread_mutex_lock(&xprt_lock);
+
+    D("Calling reset cb %p with event %d\n", xprt_type->reset_cb, event);
+    if (xprt_type->reset_cb)
+        xprt_type->reset_cb(xprt, event);
+
+    pthread_mutex_unlock(&xprt_lock);
+}
 
 static void* svc_context(void *__u)
 {
@@ -126,9 +152,10 @@ static void* svc_context(void *__u)
                     /* the file descriptor points to the service instance; we
                        simply look that service by its file descriptor, and
                        call its service function. */
+                    /* FIXME: need to take xprt->lock */
                     registered_server *trav = xprt->servers;
                     for (; trav; trav = trav->next)
-                        if (trav->xdr->fd == n) {
+		      if ((trav->xdr) && (trav->xdr->fd == n)) {
                             /* read the entire RPC */
                             if (trav->xdr->xops->read(trav->xdr) == 0) {
                                 E("%08x:%08x ONCRPC read error: aborting!\n",
@@ -239,8 +266,7 @@ bool_t svc_register (SVCXPRT *xprt, rpcprog_t prog, rpcvers_t vers,
         svc->x_vers = vers;        
     } else {
         V("RPC server %08x:%d is a real server.\n", (uint32_t)prog, (int)vers);
-        svc->xdr = xdr_init_common("/dev/oncrpc/00000000:0",
-                                   0 /* not a client XDR */);
+        svc->xdr = xdr_init_common("00000000:0", 0 /* not a client XDR */);
         if (svc->xdr == NULL) {
             E("failed to initialize service (permissions?)!\n");
             free(svc);
@@ -272,9 +298,14 @@ bool_t svc_register (SVCXPRT *xprt, rpcprog_t prog, rpcvers_t vers,
     svc->dispatch = dispatch;
     svc->next = xprt->servers;
     xprt->servers = svc;
-    xprt->num_servers++;
-    V("RPC server %08x:%d: after registering, there are %d servers.\n",
-      (uint32_t)prog, (int)vers, xprt->num_servers);
+    if (svc->xdr)
+        xprt->num_servers++;
+    else
+        xprt->num_cb_servers++;
+
+    V("RPC server %08x:%d: after registering,"
+      "total %d servers, %d cb servers.\n",
+      (uint32_t)prog, (int)vers, xprt->num_servers, xprt->num_cb_servers);
     svc->xprt = xprt;
     if (xprt->num_servers == 1) {
         D("creating RPC-server thread (detached)!\n");
@@ -284,6 +315,30 @@ bool_t svc_register (SVCXPRT *xprt, rpcprog_t prog, rpcvers_t vers,
     }
     pthread_mutex_unlock(&xprt->lock);
     return TRUE;
+}
+
+int svc_register_reset_notification_cb(SVCXPRT *xprt, svc_reset_notif_cb cb) {
+    int ret = 1;
+
+    if (xprt) {
+        pthread_mutex_lock(&xprt->lock);
+        xprt->reset_cb = cb;
+        ret = 0;
+        pthread_mutex_unlock(&xprt->lock);
+    }
+    return ret;
+}
+
+svc_reset_notif_cb svc_unregister_reset_notification_cb(SVCXPRT *xprt) {
+    svc_reset_notif_cb cb = NULL;
+
+    if (xprt) {
+        pthread_mutex_lock(&xprt->lock);
+        cb = xprt->reset_cb;
+        xprt->reset_cb = NULL;
+        pthread_mutex_unlock(&xprt->lock);
+    }
+    return cb;
 }
 
 void svc_unregister (SVCXPRT *xprt, rpcprog_t prog, rpcvers_t vers) {
@@ -329,13 +384,19 @@ void svc_unregister (SVCXPRT *xprt, rpcprog_t prog, rpcvers_t vers) {
         else V("RPC server %08x:%d does not have an associated XDR\n", 
                (unsigned)prog, (unsigned)vers);
 
-        free(found);
         /* When this goes to zero, the RPC-server thread will exit.  We do not
          * need to wait for the thread to exit, because it is detached.
          */
-        xprt->num_servers--;
-        V("RPC server %08x:%d: after unregistering, %d servers left.\n",
-          (unsigned)prog, (unsigned)vers, xprt->num_servers);
+        if (found->xdr)
+            xprt->num_servers--;
+        else
+            xprt->num_cb_servers--;
+
+        free(found);
+        V("RPC server %08x:%d: after unregistering,"
+	  "%d servers, %d cb servers left.\n",
+          (unsigned)prog, (unsigned)vers,
+	  xprt->num_servers, xprt->num_cb_servers);
     }
     pthread_mutex_unlock(&xprt->lock);
 }
@@ -369,7 +430,7 @@ void svc_dispatch(registered_server *svc, SVCXPRT *xprt)
        program-version numbers must match what's in the XDR of the service. */
 
     D("reading on fd %d for %08x:%d\n", 
-      svc->xdr->fd, svc->x_prog, svc->x_vers);
+      svc->xdr->fd, (int)svc->x_prog, (int)svc->x_vers);
 
     uint32 prog = ntohl(((uint32 *)(svc->xdr->in_msg))[RPC_OFFSET+3]);
     uint32 vers = ntohl(((uint32 *)(svc->xdr->in_msg))[RPC_OFFSET+4]);
@@ -432,8 +493,8 @@ void xprt_unregister (SVCXPRT *xprt)
     if (xprt && xprt == the_xprt) {
         if (xprt_refcount == 1) {
             xprt_refcount = 0;
-            D("Destroying RPC transport (servers %d)\n",
-              the_xprt->num_servers);
+            D("Destroying RPC transport (servers %d, cb servers %d)\n",
+              the_xprt->num_servers, the_xprt->num_cb_servers);
 
             pthread_attr_destroy(&xprt->thread_attr);
             pthread_mutexattr_destroy(&xprt->lock_attr);
@@ -500,7 +561,7 @@ svc_sendreply (SVCXPRT *xprt, xdrproc_t xdr_results,
 
         ((uint32 *)(serv->xdr->out_msg))[RPC_OFFSET] =
             ((uint32 *)(serv->xdr->in_msg))[RPC_OFFSET]; //RPC xid
-        D("%08x:%d sending RPC reply (XID %d)\n",
+        LIBRPC_DEBUG("%08x:%d sending RPC reply (XID %d)\n",
           serv->xdr->x_prog,
           serv->xdr->x_vers,
           ntohl(((uint32 *)(serv->xdr->out_msg))[RPC_OFFSET]));

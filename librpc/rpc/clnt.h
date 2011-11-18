@@ -31,10 +31,17 @@
  * clnt.h - Client side remote procedure call interface.
  *
  * Copyright (C) 1984, Sun Microsystems, Inc.
+ * Copyright (c) 2011, Code Aurora Forum.
  */
 
 #ifndef _RPC_CLNT_H
 #define _RPC_CLNT_H 1
+
+
+/*
+ * By convention, procedure 0 takes null arguments and returns them
+ */
+#define NULLPROC ((u_long)0)
 
 #ifdef __cplusplus
 extern "C" {
@@ -129,11 +136,6 @@ typedef void (*clnt_call_non_blocking_cb)
   caddr_t results, 
   rpc_reply_header error
 );
-
-/*
- * By convention, procedure 0 takes null arguments and returns them
- */
-#define NULLPROC ((rpcproc_t)0)
 
 /*===========================================================================
 FUNCTION CLNT_CALL

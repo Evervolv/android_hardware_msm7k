@@ -1,5 +1,6 @@
 /*
 ** Copyright 2008, Google Inc.
+** Copyright (c) 2009, Code Aurora Forum.All rights reserved.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License"); 
 ** you may not use this file except in compliance with the License. 
@@ -37,5 +38,8 @@ struct rpcrouter_ioctl_server_args {
 
 #define RPC_ROUTER_IOCTL_UNREGISTER_SERVER \
         _IOWR(RPC_ROUTER_IOCTL_MAGIC, 3, unsigned int)
+
+#define RPC_ROUTER_IOCTL_CLEAR_NETRESET \
+  _IOWR(RPC_ROUTER_IOCTL_MAGIC, 4, unsigned int)
 
 #endif /* RPC_IOCTL_H */
