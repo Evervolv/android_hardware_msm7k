@@ -25,7 +25,7 @@
 
 #include <hardware_legacy/AudioHardwareBase.h>
 
-namespace android {
+namespace android_audio_legacy {
 
 // ----------------------------------------------------------------------------
 // Kernel driver interface
@@ -293,7 +293,8 @@ private:
         virtual unsigned int  getInputFramesLost() const { return 0; }
                 uint32_t    devices() { return mDevices; }
                 bool        checkStandby();
-
+        virtual status_t    addAudioEffect(effect_handle_t effect){return INVALID_OPERATION;}
+        virtual status_t    removeAudioEffect(effect_handle_t effect){return INVALID_OPERATION;}
     private:
                 AudioHardware* mHardware;
                 int         mFd;
@@ -315,7 +316,7 @@ private:
             };
 
             static const uint32_t inputSamplingRates[];
-    Mutex       mA1026Lock;
+    android::Mutex       mA1026Lock;
     bool        mA1026Init;
             bool        mRecordState;
             bool        mInit;
@@ -325,7 +326,7 @@ private:
             uint32_t    mBluetoothIdTx;
             uint32_t    mBluetoothIdRx;
             AudioStreamOutMSM72xx*  mOutput;
-            SortedVector <AudioStreamInMSM72xx*>   mInputs;
+            android::SortedVector<AudioStreamInMSM72xx*>   mInputs;
 
             msm_bt_endpoint *mBTEndpoints;
             int mNumBTEndpoints;
@@ -334,7 +335,7 @@ private:
             uint32_t mVoiceVolume;
 
      friend class AudioStreamInMSM72xx;
-            Mutex       mLock;
+            android::Mutex       mLock;
             uint32_t        mRoutes[AudioSystem::NUM_MODES];
             int         mTTYMode;
 };
