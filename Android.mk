@@ -14,6 +14,8 @@
 # limitations under the License.
 #
 
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
+
 common_msm_dirs := liblights librpc libstagefrighthw dspcrashd
 msm7k_dirs := $(common_msm_dirs) boot
 
@@ -21,4 +23,6 @@ ifeq ($(TARGET_BOARD_PLATFORM),msm7x27)
   include $(call all-named-subdir-makefiles,$(msm7k_dirs))
 else
   include $(call all-named-subdir-makefiles,$(common_msm_dirs))
+endif
+
 endif
