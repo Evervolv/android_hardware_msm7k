@@ -97,7 +97,7 @@ AudioHardware::AudioHardware() :
     }
 
     mNumSndEndpoints = snd_get_num();
-    LOGD("mNumSndEndpoints = %d", mNumSndEndpoints);
+    ALOGD("mNumSndEndpoints = %d", mNumSndEndpoints);
     mSndEndpoints = new msm_snd_endpoint[mNumSndEndpoints];
     mInit = true;
     ALOGV("constructed %d SND endpoints)", mNumSndEndpoints);
@@ -114,7 +114,7 @@ AudioHardware::AudioHardware() :
 #define CHECK_FOR(desc) \
         if (!strcmp(ept->name, #desc)) { \
             SND_DEVICE_##desc = ept->id; \
-            LOGD("BT MATCH " #desc); \
+            ALOGD("BT MATCH " #desc); \
         } else
         CHECK_FOR(CURRENT)
         CHECK_FOR(HANDSET)
@@ -363,7 +363,7 @@ static status_t set_volume_rpc(uint32_t device,
 {
     int fd;
 #if LOG_SND_RPC
-    LOGD("rpc_snd_set_volume(%d, %d, %d)\n", device, method, volume);
+    ALOGD("rpc_snd_set_volume(%d, %d, %d)\n", device, method, volume);
 #endif
 
     if (device == -1UL) return NO_ERROR;
@@ -407,7 +407,7 @@ status_t AudioHardware::setVoiceVolume(float v)
     }
 
     int vol = lrint(v * 5.0);
-    LOGD("setVoiceVolume(%f)\n", v);
+    ALOGD("setVoiceVolume(%f)\n", v);
     LOGI("Setting in-call volume to %d (available range is 0 to 5)\n", vol);
 
     Mutex::Autolock lock(mLock);
@@ -440,7 +440,7 @@ static status_t do_route_audio_rpc(uint32_t device,
 
     int fd;
 #if LOG_SND_RPC
-    LOGD("rpc_snd_set_device(%d, %d, %d)\n", device, ear_mute, mic_mute);
+    ALOGD("rpc_snd_set_device(%d, %d, %d)\n", device, ear_mute, mic_mute);
 #endif
 
     fd = open("/dev/msm_snd", O_RDWR);
@@ -702,7 +702,7 @@ AudioHardware::AudioStreamOutMSM72xx::~AudioStreamOutMSM72xx()
 
 ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t bytes)
 {
-    // LOGD("AudioStreamOutMSM72xx::write(%p, %u)", buffer, bytes);
+    // ALOGD("AudioStreamOutMSM72xx::write(%p, %u)", buffer, bytes);
     status_t status = NO_INIT;
     size_t count = bytes;
     const uint8_t* p = static_cast<const uint8_t*>(buffer);
@@ -970,7 +970,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
 
     audpre_index = calculate_audpre_table_index(mSampleRate);
     tx_iir_index = (audpre_index * 2) + (hw->checkOutputStandby() ? 0 : 1);
-    LOGD("audpre_index = %d, tx_iir_index = %d\n", audpre_index, tx_iir_index);
+    ALOGD("audpre_index = %d, tx_iir_index = %d\n", audpre_index, tx_iir_index);
 
     /**
      * If audio-preprocessing failed, we should not block record.

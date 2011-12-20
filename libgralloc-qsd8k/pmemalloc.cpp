@@ -157,7 +157,7 @@ int PmemUserspaceAllocator::alloc_pmem_buffer(size_t size, int usage,
         } else {
             int openFlags = get_open_flags(usage);
 
-            //LOGD("%s: allocating pmem at offset 0x%p", pmemdev, offset);
+            //ALOGD("%s: allocating pmem at offset 0x%p", pmemdev, offset);
 
             // now create the "sub-heap"
             int fd = deps.open(pmemdev, openFlags, 0);
@@ -185,7 +185,7 @@ int PmemUserspaceAllocator::alloc_pmem_buffer(size_t size, int usage,
                 *pOffset = offset;
                 *pFd = fd;
             }
-            //LOGD_IF(!err, "%s: allocating pmem size=%d, offset=%d", pmemdev, size, offset);
+            //ALOGD_IF(!err, "%s: allocating pmem size=%d, offset=%d", pmemdev, size, offset);
         }
     }
     END_FUNC;

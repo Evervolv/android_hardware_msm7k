@@ -119,7 +119,7 @@ AudioHardware::AudioHardware() :
 
     acoustic =:: dlopen("/system/lib/libhtc_acoustic.so", RTLD_NOW);
     if (acoustic == NULL ) {
-        LOGD("Could not open libhtc_acoustic.so");
+        ALOGD("Could not open libhtc_acoustic.so");
         /* this is not really an error on non-htc devices... */
         mNumBTEndpoints = 0;
         mInit = true;
@@ -133,26 +133,26 @@ AudioHardware::AudioHardware() :
 
     set_tpa2018d1_parameters = (int (*)(void))::dlsym(acoustic, "set_tpa2018d1_parameters");
     if ((*set_tpa2018d1_parameters) == 0) {
-        LOGD("set_tpa2018d1_parameters() not present");
+        ALOGD("set_tpa2018d1_parameters() not present");
         support_tpa2018d1 = false;
     }
 
     int rc = set_acoustic_parameters();
     if (rc < 0) {
-        LOGD("Could not set acoustic parameters to share memory: %d", rc);
+        ALOGD("Could not set acoustic parameters to share memory: %d", rc);
     }
 
     if (support_tpa2018d1) {
        rc = set_tpa2018d1_parameters();
        if (rc < 0) {
            support_tpa2018d1 = false;
-           LOGD("speaker amplifier tpa2018 is not supported\n");
+           ALOGD("speaker amplifier tpa2018 is not supported\n");
        }
     }
 
     snd_get_num = (int (*)(void))::dlsym(acoustic, "snd_get_num");
     if ((*snd_get_num) == 0 ) {
-        LOGD("Could not open snd_get_num()");
+        ALOGD("Could not open snd_get_num()");
     }
 
     mNumBTEndpoints = snd_get_num();
@@ -344,7 +344,7 @@ static status_t set_mic_mute(bool _mute)
         LOGE("Cannot open msm_audio_ctl device\n");
         return -1;
     }
-    LOGD("Setting mic mute to %d\n", mute);
+    ALOGD("Setting mic mute to %d\n", mute);
     if (ioctl(fd, AUDIO_SET_MUTE, &mute)) {
         LOGE("Cannot set mic mute on current device\n");
         close(fd);
@@ -397,10 +397,10 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
         if (param.get(key, value) == NO_ERROR) {
             if (value == HAC_VALUE_ON) {
                 mHACSetting = true;
-                LOGD("Enable HAC");
+                ALOGD("Enable HAC");
             } else {
                 mHACSetting = false;
-                LOGD("Disable HAC");
+                ALOGD("Disable HAC");
             }
         }
     }
@@ -411,7 +411,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
             mBluetoothNrec = true;
         } else {
             mBluetoothNrec = false;
-            LOGD("Turning noise reduction and echo cancellation off for BT "
+            ALOGD("Turning noise reduction and echo cancellation off for BT "
                  "headset");
         }
     }
@@ -423,12 +423,12 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
             if (!strcasecmp(value.string(), mBTEndpoints[i].name)) {
                 mBluetoothIdTx = mBTEndpoints[i].tx;
                 mBluetoothIdRx = mBTEndpoints[i].rx;
-                LOGD("Using custom acoustic parameters for %s", value.string());
+                ALOGD("Using custom acoustic parameters for %s", value.string());
                 break;
             }
         }
         if (mBluetoothIdTx == 0) {
-            LOGD("Using default acoustic parameters "
+            ALOGD("Using default acoustic parameters "
                  "(%s not in acoustic database)", value.string());
         }
         doRouting();
@@ -601,7 +601,7 @@ static status_t set_volume_rpc(uint32_t volume)
         return -1;
     }
     volume *= 20; //percentage
-    LOGD("Setting in-call volume to %d\n", volume);
+    ALOGD("Setting in-call volume to %d\n", volume);
     if (ioctl(fd, AUDIO_SET_VOLUME, &volume)) {
         LOGW("Cannot set volume on current device\n");
     }
@@ -623,7 +623,7 @@ status_t AudioHardware::setVoiceVolume(float v)
 
     Mutex::Autolock lock(mLock);
     if (mHACSetting && hac_enable && mCurSndDevice == (int) SND_DEVICE_HANDSET) {
-        LOGD("HAC enable: Setting in-call volume to maximum.\n");
+        ALOGD("HAC enable: Setting in-call volume to maximum.\n");
         set_volume_rpc(VOICE_VOLUME_MAX);
     } else {
         LOGI("voice volume %d (range is 0 to %d)", vol, VOICE_VOLUME_MAX);
@@ -652,68 +652,68 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall, uint32_t r
         goto Incall;
 
     // hack -- kernel needs to put these in include file
-    LOGD("Switching audio device to ");
+    ALOGD("Switching audio device to ");
     if (device == SND_DEVICE_HANDSET) {
            out_device = HANDSET_SPKR;
            mic_device = HANDSET_MIC;
-           LOGD("Handset");
+           ALOGD("Handset");
     } else if ((device  == SND_DEVICE_BT) || (device == SND_DEVICE_BT_EC_OFF)) {
            out_device = BT_SCO_SPKR;
            mic_device = BT_SCO_MIC;
-           LOGD("BT Headset");
+           ALOGD("BT Headset");
     } else if (device == SND_DEVICE_SPEAKER ||
                device == SND_DEVICE_SPEAKER_BACK_MIC) {
            out_device = SPKR_PHONE_MONO;
            mic_device = SPKR_PHONE_MIC;
-           LOGD("Speakerphone");
+           ALOGD("Speakerphone");
     } else if (device == SND_DEVICE_HEADSET) {
            out_device = HEADSET_SPKR_STEREO;
            mic_device = HEADSET_MIC;
-           LOGD("Stereo Headset");
+           ALOGD("Stereo Headset");
     } else if (device == SND_DEVICE_HEADSET_AND_SPEAKER) {
            out_device = SPKR_PHONE_HEADSET_STEREO;
            mic_device = HEADSET_MIC;
-           LOGD("Stereo Headset + Speaker");
+           ALOGD("Stereo Headset + Speaker");
     } else if (device == SND_DEVICE_HEADSET_AND_SPEAKER_BACK_MIC) {
            out_device = SPKR_PHONE_HEADSET_STEREO;
            mic_device = SPKR_PHONE_MIC;
-           LOGD("Stereo Headset + Speaker and back mic");
+           ALOGD("Stereo Headset + Speaker and back mic");
     } else if (device == SND_DEVICE_NO_MIC_HEADSET) {
            out_device = HEADSET_SPKR_STEREO;
            mic_device = HANDSET_MIC;
-           LOGD("No microphone Wired Headset");
+           ALOGD("No microphone Wired Headset");
     } else if (device == SND_DEVICE_NO_MIC_HEADSET_BACK_MIC) {
            out_device = HEADSET_SPKR_STEREO;
            mic_device = SPKR_PHONE_MIC;
-           LOGD("No microphone Wired Headset and back mic");
+           ALOGD("No microphone Wired Headset and back mic");
     } else if (device == SND_DEVICE_HANDSET_BACK_MIC) {
            out_device = HANDSET_SPKR;
            mic_device = SPKR_PHONE_MIC;
-           LOGD("Handset and back mic");
+           ALOGD("Handset and back mic");
     } else if (device == SND_DEVICE_FM_HEADSET) {
            out_device = FM_HEADSET;
            mic_device = HEADSET_MIC;
-           LOGD("Stereo FM headset");
+           ALOGD("Stereo FM headset");
     } else if (device == SND_DEVICE_FM_SPEAKER) {
            out_device = FM_SPKR;
            mic_device = HEADSET_MIC;
-           LOGD("Stereo FM speaker");
+           ALOGD("Stereo FM speaker");
     } else if (device == SND_DEVICE_CARKIT) {
            out_device = BT_SCO_SPKR;
            mic_device = BT_SCO_MIC;
-           LOGD("Carkit");
+           ALOGD("Carkit");
     } else if (device == SND_DEVICE_TTY_FULL) {
         out_device = TTY_HEADSET_SPKR;
         mic_device = TTY_HEADSET_MIC;
-        LOGD("TTY FULL headset");
+        ALOGD("TTY FULL headset");
     } else if (device == SND_DEVICE_TTY_VCO) {
         out_device = TTY_HEADSET_SPKR;
         mic_device = SPKR_PHONE_MIC;
-        LOGD("TTY VCO headset");
+        ALOGD("TTY VCO headset");
     } else if (device == SND_DEVICE_TTY_HCO) {
         out_device = SPKR_PHONE_MONO;
         mic_device = TTY_HEADSET_MIC;
-        LOGD("TTY HCO headset");
+        ALOGD("TTY HCO headset");
     } else {
         LOGE("unknown device %d", device);
         return -1;
@@ -728,12 +728,12 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall, uint32_t r
                 LOGE("Cannot open msm_htc_fm device");
                 return -1;
             }
-            LOGD("Opened msm_htc_fm for FM radio");
+            ALOGD("Opened msm_htc_fm for FM radio");
         }
     } else if (fd_fm_device >= 0) {
         close(fd_fm_device);
         fd_fm_device = -1;
-        LOGD("Closed msm_htc_fm after FM radio");
+        ALOGD("Closed msm_htc_fm after FM radio");
     }
 #endif
 
@@ -776,7 +776,7 @@ Incall:
             close(fd);
             return -1;
         }
-        LOGD("Voice Started!!");
+        ALOGD("Voice Started!!");
         voice_started = 1;
     }
     else if (inCall == false && voice_started) {
@@ -793,7 +793,7 @@ Incall:
                close(fd);
                return -1;
         }
-        LOGD("Voice Stopped!!");
+        ALOGD("Voice Stopped!!");
         voice_started = 0;
     }
 
@@ -826,7 +826,7 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
             /* use default BT entry defined in AudioBTID.csv */
             rx_acdb_id = mBTEndpoints[0].rx;
             tx_acdb_id = mBTEndpoints[0].tx;
-            LOGD("Update ACDB ID to default BT setting\n");
+            ALOGD("Update ACDB ID to default BT setting\n");
         }
     }  else if (device == (int) SND_DEVICE_CARKIT
                 || device == (int) SND_DEVICE_BT_EC_OFF) {
@@ -837,12 +837,12 @@ status_t AudioHardware::doAudioRouteOrMute(uint32_t device)
             /* use default carkit entry defined in AudioBTID.csv */
             rx_acdb_id = mBTEndpoints[1].rx;
             tx_acdb_id = mBTEndpoints[1].tx;
-            LOGD("Update ACDB ID to default carkit setting");
+            ALOGD("Update ACDB ID to default carkit setting");
         }
     } else if (mMode == AudioSystem::MODE_IN_CALL
                && hac_enable && mHACSetting &&
                device == (int) SND_DEVICE_HANDSET) {
-        LOGD("Update acdb id to hac profile.");
+        ALOGD("Update acdb id to hac profile.");
         rx_acdb_id = ACDB_ID_HAC_HANDSET_SPKR;
         tx_acdb_id = ACDB_ID_HAC_HANDSET_MIC;
     } else {
@@ -925,7 +925,7 @@ status_t AudioHardware::doA1026_init(void)
         LOGE("Fail to open %s\n", fn);
         goto ld_img_error;
     } else {
-        LOGD("open %s success\n", fn);
+        ALOGD("open %s success\n", fn);
     }
 
     rc = fstat(fw_fd, &fw_stat);
@@ -936,7 +936,7 @@ status_t AudioHardware::doA1026_init(void)
 
     remaining = (int)fw_stat.st_size;
 
-    LOGD("Firmware %s size %d\n", fn, remaining);
+    ALOGD("Firmware %s size %d\n", fn, remaining);
 
     if (remaining > sizeof(local_vpimg_buf)) {
         LOGE("File %s size %d exceeds internal limit %d\n",
@@ -965,11 +965,11 @@ status_t AudioHardware::doA1026_init(void)
 
     fwimg.buf = local_vpimg_buf;
     fwimg.img_size = (int)(fw_stat.st_size - remaining);
-    LOGD("Total %d bytes put to user space buffer.\n", fwimg.img_size);
+    ALOGD("Total %d bytes put to user space buffer.\n", fwimg.img_size);
 
     rc = ioctl(fd_a1026, A1026_BOOTUP_INIT, &fwimg);
     if (!rc) {
-        LOGD("audience_a1026 init OK\n");
+        ALOGD("audience_a1026 init OK\n");
         mA1026Init = 1;
     } else
         LOGE("audience_a1026 init failed\n");
@@ -994,7 +994,7 @@ uint32_t AudioHardware::getACDB(int mode, int device)
     uint32_t acdb_id = 0;
     int batt_temp = 0;
     if (mMode == AudioSystem::MODE_IN_CALL) {
-        LOGD("skip update ACDB due to in-call");
+        ALOGD("skip update ACDB due to in-call");
         return 0;
     }
 
@@ -1011,11 +1011,11 @@ uint32_t AudioHardware::getACDB(int mode, int device)
             case SND_DEVICE_SPEAKER_BACK_MIC:
                 acdb_id = ACDB_ID_SPKR_PLAYBACK;
                 if(alt_enable) {
-                    LOGD("Enable ALT for speaker\n");
+                    ALOGD("Enable ALT for speaker\n");
                     if (get_batt_temp(&batt_temp) == NO_ERROR) {
                         if (batt_temp < 50)
                             acdb_id = ACDB_ID_ALT_SPKR_PLAYBACK;
-                        LOGD("ALT batt temp = %d\n", batt_temp);
+                        ALOGD("ALT batt temp = %d\n", batt_temp);
                     }
                 }
                 break;
@@ -1097,7 +1097,7 @@ status_t AudioHardware::do_tpa2018_control(int mode)
         if (rc < 0) {
             LOGE("ioctl TPA2018_SET_MODE failed: %s", strerror(errno));
         } else
-            LOGD("Update TPA2018_SET_MODE to mode %d success", mode);
+            ALOGD("Update TPA2018_SET_MODE to mode %d success", mode);
 
         close(fd);
     }
@@ -1449,7 +1449,7 @@ status_t AudioHardware::doRouting()
         mCurSndDevice = sndDevice;
         if (mMode == AudioSystem::MODE_IN_CALL) {
             if (mHACSetting && hac_enable && mCurSndDevice == (int) SND_DEVICE_HANDSET) {
-                LOGD("HAC enable: Setting in-call volume to maximum.\n");
+                ALOGD("HAC enable: Setting in-call volume to maximum.\n");
                 set_volume_rpc(VOICE_VOLUME_MAX);
             } else {
                 set_volume_rpc(mVoiceVolume);
@@ -1582,7 +1582,7 @@ AudioHardware::AudioStreamOutMSM72xx::~AudioStreamOutMSM72xx()
 
 ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t bytes)
 {
-    // LOGD("AudioStreamOutMSM72xx::write(%p, %u)", buffer, bytes);
+    // ALOGD("AudioStreamOutMSM72xx::write(%p, %u)", buffer, bytes);
     status_t status = NO_INIT;
     size_t count = bytes;
     const uint8_t* p = static_cast<const uint8_t*>(buffer);
@@ -1656,7 +1656,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
                 goto Error;
             }
             mRetryCount++;
-            LOGD("EAGAIN - retry");
+            ALOGD("EAGAIN - retry");
         }
     }
 
@@ -1674,7 +1674,7 @@ Error:
 status_t AudioHardware::AudioStreamOutMSM72xx::standby()
 {
     if (!mStandby) {
-        LOGD("AudioHardware pcm playback is going to standby.");
+        ALOGD("AudioHardware pcm playback is going to standby.");
         if (mFd >= 0) {
             ::close(mFd);
             mFd = -1;
@@ -1895,7 +1895,7 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
                 goto Error;
             }
             mRetryCount++;
-            LOGD("EAGAIN - retrying");
+            ALOGD("EAGAIN - retrying");
         }
     }
     return bytes;
@@ -1912,7 +1912,7 @@ Error:
 status_t AudioHardware::AudioStreamInMSM72xx::standby()
 {
     if (!mStandby) {
-        LOGD("AudioHardware PCM record is going to standby.");
+        ALOGD("AudioHardware PCM record is going to standby.");
         if (mFd >= 0) {
             ::close(mFd);
             mFd = -1;

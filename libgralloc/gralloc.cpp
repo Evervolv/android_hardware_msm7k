@@ -254,15 +254,15 @@ static int init_gpu_area_locked(private_module_t* m)
             LOGE("HW3D_GET_REGIONS failed (%s)", strerror(errno));
             err = -errno;
         } else {
-            LOGD("smi: offset=%08lx, len=%08lx, phys=%p", 
+            ALOGD("smi: offset=%08lx, len=%08lx, phys=%p", 
                     regions[HW3D_SMI].map_offset, 
                     regions[HW3D_SMI].len, 
                     regions[HW3D_SMI].phys);
-            LOGD("ebi: offset=%08lx, len=%08lx, phys=%p", 
+            ALOGD("ebi: offset=%08lx, len=%08lx, phys=%p", 
                     regions[HW3D_EBI].map_offset,
                     regions[HW3D_EBI].len,
                     regions[HW3D_EBI].phys);
-            LOGD("reg: offset=%08lx, len=%08lx, phys=%p", 
+            ALOGD("reg: offset=%08lx, len=%08lx, phys=%p", 
                     regions[HW3D_REGS].map_offset,
                     regions[HW3D_REGS].len,
                     regions[HW3D_REGS].phys);
@@ -375,7 +375,7 @@ try_ashmem:
                     fd = -1;
                 }
                 memset((char*)base + offset, 0, size);
-                //LOGD_IF(!err, "allocating pmem size=%d, offset=%d", size, offset);
+                //ALOGD_IF(!err, "allocating pmem size=%d, offset=%d", size, offset);
             }
         } else {
             if ((usage & GRALLOC_USAGE_HW_2D) == 0) {
@@ -415,7 +415,7 @@ try_ashmem:
                     sleeptime += 250000;
                     usleep(sleeptime);
                 } else {
-                    LOGD("allocating GPU size=%d, offset=%d", size, offset);
+                    ALOGD("allocating GPU size=%d, offset=%d", size, offset);
                     fd = open("/dev/null", O_RDONLY); // just so marshalling doesn't fail
                     gpu_fd = m->gpu;
                     memset((char*)base + offset, 0, size);
@@ -545,7 +545,7 @@ static int gralloc_free(alloc_device_t* dev,
                 }
             }
         } else if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_GPU) {
-            LOGD("freeing GPU buffer at %d", hnd->offset);
+            ALOGD("freeing GPU buffer at %d", hnd->offset);
             sAllocatorGPU.deallocate(hnd->offset);
         }
 

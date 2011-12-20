@@ -69,7 +69,7 @@ static int gralloc_map(gralloc_module_t const* module,
             return -errno;
         }
         hnd->base = intptr_t(mappedAddress) + hnd->offset;
-        //LOGD("gralloc_map() succeeded fd=%d, off=%d, size=%d, vaddr=%p", 
+        //ALOGD("gralloc_map() succeeded fd=%d, off=%d, size=%d, vaddr=%p", 
         //        hnd->fd, hnd->offset, hnd->size, mappedAddress);
     }
     *vaddr = (void*)hnd->base;
@@ -87,7 +87,7 @@ static int gralloc_unmap(gralloc_module_t const* module,
         base = (void*)(intptr_t(base) - hnd->offset);
         size += hnd->offset;
 #endif
-        //LOGD("unmapping from %p, size=%d", base, size);
+        //ALOGD("unmapping from %p, size=%d", base, size);
         if (munmap(base, size) < 0) {
             LOGE("Could not unmap %s", strerror(errno));
         }
@@ -215,7 +215,7 @@ int gralloc_lock(gralloc_module_t const* module,
                 return -EBUSY;
             } else {
                 // this is not an error
-                //LOGD("%p already locked for read... count = %d", 
+                //ALOGD("%p already locked for read... count = %d", 
                 //        handle, (current_value & ~(1<<31)));
             }
         }

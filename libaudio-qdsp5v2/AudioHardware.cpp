@@ -214,7 +214,7 @@ AudioHardware::AudioStreamOutQ5V2::~AudioStreamOutQ5V2()
 
 ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t bytes)
 {
-    // LOGD("AudioStreamOutQ5V2::write(%p, %u)", buffer, bytes);
+    // ALOGD("AudioStreamOutQ5V2::write(%p, %u)", buffer, bytes);
     status_t status = NO_INIT;
     size_t count = bytes;
     const uint8_t* p = static_cast<const uint8_t*>(buffer);

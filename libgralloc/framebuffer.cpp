@@ -367,7 +367,7 @@ int fb_device_open(hw_module_t const* module, const char* name,
             if (m->finfo.reserved[0] == 0x5444 &&
                     m->finfo.reserved[1] == 0x5055) {
                 dev->device.setUpdateRect = fb_setUpdateRect;
-                LOGD("UPDATE_ON_DEMAND supported");
+                ALOGD("UPDATE_ON_DEMAND supported");
             }
 
             *device = &dev->device.common;

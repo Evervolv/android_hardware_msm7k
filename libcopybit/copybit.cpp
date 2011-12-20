@@ -212,7 +212,7 @@ static int msm_copybit(struct copybit_context_t *dev, void const *list)
 #if DEBUG_MDP_ERRORS
         struct mdp_blit_req_list const* l = (struct mdp_blit_req_list const*)list;
         for (int i=0 ; i<l->count ; i++) {
-            LOGD("%d: src={w=%d, h=%d, f=%d, rect={%d,%d,%d,%d}}\n"
+            ALOGD("%d: src={w=%d, h=%d, f=%d, rect={%d,%d,%d,%d}}\n"
                  "    dst={w=%d, h=%d, f=%d, rect={%d,%d,%d,%d}}\n"
                  "    flags=%08lx"
                     ,
