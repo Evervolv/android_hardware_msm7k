@@ -152,7 +152,7 @@ status_t AudioHardware::setVoiceVolume(float v)
 
 status_t AudioHardware::setMasterVolume(float v)
 {
-    LOGI("Set master volume to %f.\n", v);
+    ALOGI("Set master volume to %f.\n", v);
     // We return an error code here to let the audioflinger do in-software
     // volume on top of the maximum volume that we set through the SND API.
     // return error - software mixer will handle it
@@ -303,7 +303,7 @@ status_t AudioHardware::AudioStreamOutQ5V2::standby()
         mFd = -1;
     }
     mStandby = true;
-    LOGI("AudioHardware pcm playback is going to standby.");
+    ALOGI("AudioHardware pcm playback is going to standby.");
     return status;
 }
 

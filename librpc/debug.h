@@ -31,10 +31,10 @@
 #define PRINT(x...) do {                                    \
         fprintf(stdout, "%s(%d) ", __FUNCTION__, __LINE__); \
         fprintf(stdout, ##x);                               \
-        LOGI(x);                               \
+        ALOGI(x);                               \
     } while(0)
 #else
-#define PRINT(x...) LOGI(x)
+#define PRINT(x...) ALOGI(x)
 #endif
 
 #ifdef DEBUG

@@ -1672,7 +1672,7 @@ namespace android {
         if (th_q < 0) LOGW("property jpeg-thumbnail-quality not specified");
 
         if (th_w > 0 && th_h > 0 && th_q > 0) {
-            LOGI("setting thumbnail dimensions to %dx%d, quality %d",
+            ALOGI("setting thumbnail dimensions to %dx%d, quality %d",
                  th_w, th_h, th_q);
             int ret = LINK_camera_set_thumbnail_properties(th_w, th_h, th_q);
             if (ret != CAMERA_SUCCESS) {
