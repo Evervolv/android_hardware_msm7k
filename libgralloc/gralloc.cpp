@@ -409,7 +409,7 @@ try_ashmem:
                 offset = sAllocatorGPU.allocate(size);
                 if (offset < 0) {
                     // no more pmem memory
-                    LOGW("%d KiB allocation failed in GPU memory, retrying...",
+                    ALOGW("%d KiB allocation failed in GPU memory, retrying...",
                             size/1024);
                     err = -ENOMEM;
                     sleeptime += 250000;

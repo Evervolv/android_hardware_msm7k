@@ -1377,7 +1377,7 @@ namespace android {
                     }                                                                     \
                 }                                                                         \
                 else {                                                                    \
-                    LOGW("receiveRawPicture: GPS " #what " not specified: "               \
+                    ALOGW("receiveRawPicture: GPS " #what " not specified: "               \
                           "defaulting to zero in EXIF header.");                          \
                     encode_location = false;                                              \
                }                                                                          \
@@ -1663,13 +1663,13 @@ namespace android {
 
         int th_w, th_h, th_q;
         th_w = mParameters.getInt("jpeg-thumbnail-width");
-        if (th_w < 0) LOGW("property jpeg-thumbnail-width not specified");
+        if (th_w < 0) ALOGW("property jpeg-thumbnail-width not specified");
 
         th_h = mParameters.getInt("jpeg-thumbnail-height");
-        if (th_h < 0) LOGW("property jpeg-thumbnail-height not specified");
+        if (th_h < 0) ALOGW("property jpeg-thumbnail-height not specified");
 
         th_q = mParameters.getInt("jpeg-thumbnail-quality");
-        if (th_q < 0) LOGW("property jpeg-thumbnail-quality not specified");
+        if (th_q < 0) ALOGW("property jpeg-thumbnail-quality not specified");
 
         if (th_w > 0 && th_h > 0 && th_q > 0) {
             ALOGI("setting thumbnail dimensions to %dx%d, quality %d",
@@ -1684,7 +1684,7 @@ namespace android {
         /* Set Default JPEG encoding--this does not cause a callback */
         encode_properties.quality   = mParameters.getInt("jpeg-quality");
         if (encode_properties.quality < 0) {
-            LOGW("JPEG-image quality is not specified "
+            ALOGW("JPEG-image quality is not specified "
                  "or is negative, defaulting to %d",
                  encode_properties.quality);
             encode_properties.quality = 100;

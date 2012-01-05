@@ -252,7 +252,7 @@ AudioStreamOut* AudioHardware::openOutputStream(
 void AudioHardware::closeOutputStream(AudioStreamOut* out) {
     Mutex::Autolock lock(mLock);
     if (mOutput == 0 || mOutput != out) {
-        LOGW("Attempt to close invalid output stream");
+        ALOGW("Attempt to close invalid output stream");
     }
     else {
         delete mOutput;
@@ -293,7 +293,7 @@ void AudioHardware::closeInputStream(AudioStreamIn* in) {
 
     ssize_t index = mInputs.indexOf((AudioStreamInMSM72xx *)in);
     if (index < 0) {
-        LOGW("Attempt to close invalid input stream");
+        ALOGW("Attempt to close invalid input stream");
     } else {
         mLock.unlock();
         delete mInputs[index];
@@ -451,7 +451,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
 
             if (noiseSuppressionState != mNoiseSuppressionState) {
                 if (!mA1026Init) {
-                    LOGW("Audience A1026 not initialized.\n");
+                    ALOGW("Audience A1026 not initialized.\n");
                     return INVALID_OPERATION;
                 }
 
@@ -577,15 +577,15 @@ size_t AudioHardware::getBufferSize(uint32_t sampleRate, int channelCount)
 size_t AudioHardware::getInputBufferSize(uint32_t sampleRate, int format, int channelCount)
 {
     if (format != AudioSystem::PCM_16_BIT) {
-        LOGW("getInputBufferSize bad format: %d", format);
+        ALOGW("getInputBufferSize bad format: %d", format);
         return 0;
     }
     if (channelCount < 1 || channelCount > 2) {
-        LOGW("getInputBufferSize bad channel count: %d", channelCount);
+        ALOGW("getInputBufferSize bad channel count: %d", channelCount);
         return 0;
     }
     if (sampleRate < 8000 || sampleRate > 48000) {
-        LOGW("getInputBufferSize bad sample rate: %d", sampleRate);
+        ALOGW("getInputBufferSize bad sample rate: %d", sampleRate);
         return 0;
     }
 
@@ -603,7 +603,7 @@ static status_t set_volume_rpc(uint32_t volume)
     volume *= 20; //percentage
     ALOGD("Setting in-call volume to %d\n", volume);
     if (ioctl(fd, AUDIO_SET_VOLUME, &volume)) {
-        LOGW("Cannot set volume on current device\n");
+        ALOGW("Cannot set volume on current device\n");
     }
     close(fd);
     return NO_ERROR;
@@ -612,10 +612,10 @@ static status_t set_volume_rpc(uint32_t volume)
 status_t AudioHardware::setVoiceVolume(float v)
 {
     if (v < 0.0) {
-        LOGW("setVoiceVolume(%f) under 0.0, assuming 0.0", v);
+        ALOGW("setVoiceVolume(%f) under 0.0, assuming 0.0", v);
         v = 0.0;
     } else if (v > 1.0) {
-        LOGW("setVoiceVolume(%f) over 1.0, assuming 1.0", v);
+        ALOGW("setVoiceVolume(%f) over 1.0, assuming 1.0", v);
         v = 1.0;
     }
 
@@ -952,7 +952,7 @@ status_t AudioHardware::doA1026_init(void)
         }
         else if (!nr) {
             if (remaining)
-                LOGW("EOF reading firmware %s while %d bytes remain\n",
+                ALOGW("EOF reading firmware %s while %d bytes remain\n",
                      fn, remaining);
             break;
         }
@@ -1110,7 +1110,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
     int retry = 4;
 
     if (!mA1026Init) {
-        LOGW("Audience A1026 not initialized.\n");
+        ALOGW("Audience A1026 not initialized.\n");
         return NO_INIT;
     }
 
@@ -1125,7 +1125,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
     }
 
     if ((Mode < AudioSystem::MODE_CURRENT) || (Mode >= AudioSystem::NUM_MODES)) {
-        LOGW("Illegal value: doAudience_A1026_Control(%d, %u, %u)", Mode, Record, Routes);
+        ALOGW("Illegal value: doAudience_A1026_Control(%d, %u, %u)", Mode, Record, Routes);
         mA1026Lock.unlock();
         return BAD_VALUE;
     }
@@ -1302,7 +1302,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
         } while (--retry);
 
         if (rc < 0) {
-            LOGW("A1026 do hard reset to recover from error!\n");
+            ALOGW("A1026 do hard reset to recover from error!\n");
             rc = doA1026_init(); /* A1026 needs to do hard reset! */
             if (!rc) {
                 /* after doA1026_init(), fd_a1026 is -1*/
@@ -1408,7 +1408,7 @@ status_t AudioHardware::doRouting()
     if (sndDevice == -1) {
         if (outputDevices & (outputDevices - 1)) {
             if ((outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) == 0) {
-                LOGW("Hardware does not support requested route combination (%#X),"
+                ALOGW("Hardware does not support requested route combination (%#X),"
                         " picking closest possible route...", outputDevices);
             }
         }

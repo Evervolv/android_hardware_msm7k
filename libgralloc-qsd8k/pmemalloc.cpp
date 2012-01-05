@@ -310,7 +310,7 @@ int PmemKernelAllocator::free_pmem_buffer(size_t size, void* base, int offset, i
     int err = deps.munmap(base, size);
     if (err < 0) {
         err = deps.getErrno();
-        LOGW("%s: error unmapping pmem fd: %s", pmemdev, strerror(err));
+        ALOGW("%s: error unmapping pmem fd: %s", pmemdev, strerror(err));
         return -err;
     }
     END_FUNC;
