@@ -223,7 +223,7 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
         ALOGV("open pcm_out driver");
         status = ::open("/dev/msm_pcm_out", O_RDWR);
         if (status < 0) {
-                LOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
+                ALOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
             goto Error;
         }
         mFd = status;
@@ -233,7 +233,7 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
         struct msm_audio_config config;
         status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
         if (status < 0) {
-            LOGE("Cannot read pcm_out config");
+            ALOGE("Cannot read pcm_out config");
             goto Error;
         }
 
@@ -245,7 +245,7 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
 //        config.codec_type = CODEC_TYPE_PCM;
         status = ioctl(mFd, AUDIO_SET_CONFIG, &config);
         if (status < 0) {
-            LOGE("Cannot set config");
+            ALOGE("Cannot set config");
             goto Error;
         }
 
@@ -257,13 +257,13 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
 #if 0
         status = ioctl(mFd, AUDIO_START, &acdb_id);
         if (status < 0) {
-            LOGE("Cannot start pcm playback");
+            ALOGE("Cannot start pcm playback");
             goto Error;
         }
 
         status = ioctl(mFd, AUDIO_SET_VOLUME, &stream_volume);
         if (status < 0) {
-            LOGE("Cannot start pcm playback");
+            ALOGE("Cannot start pcm playback");
             goto Error;
         }
 #endif

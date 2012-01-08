@@ -71,7 +71,7 @@ AudioHardware::AudioHardware() :
 
     acoustic = ::dlopen("/system/lib/libhtc_acoustic.so", RTLD_NOW);
     if (acoustic == NULL ) {
-        LOGE("Could not open libhtc_acoustic.so");
+        ALOGE("Could not open libhtc_acoustic.so");
         /* this is not really an error on non-htc devices... */
         mNumSndEndpoints = 0;
         mInit = true;
@@ -80,19 +80,19 @@ AudioHardware::AudioHardware() :
 
     set_acoustic_parameters = (int (*)(void))::dlsym(acoustic, "set_acoustic_parameters");
     if ((*set_acoustic_parameters) == 0 ) {
-        LOGE("Could not open set_acoustic_parameters()");
+        ALOGE("Could not open set_acoustic_parameters()");
         return;
     }
 
     int rc = set_acoustic_parameters();
     if (rc < 0) {
-        LOGE("Could not set acoustic parameters to share memory: %d", rc);
+        ALOGE("Could not set acoustic parameters to share memory: %d", rc);
 //        return;
     }
 
     snd_get_num = (int (*)(void))::dlsym(acoustic, "snd_get_num_endpoints");
     if ((*snd_get_num) == 0 ) {
-        LOGE("Could not open snd_get_num()");
+        ALOGE("Could not open snd_get_num()");
 //        return;
     }
 
@@ -104,7 +104,7 @@ AudioHardware::AudioHardware() :
     ept = mSndEndpoints;
     snd_get_endpoint = (int (*)(int, msm_snd_endpoint *))::dlsym(acoustic, "snd_get_endpoint");
     if ((*snd_get_endpoint) == 0 ) {
-        LOGE("Could not open snd_get_endpoint()");
+        ALOGE("Could not open snd_get_endpoint()");
         return;
     }
 
@@ -370,7 +370,7 @@ static status_t set_volume_rpc(uint32_t device,
 
     fd = open("/dev/msm_snd", O_RDWR);
     if (fd < 0) {
-        LOGE("Can not open snd device");
+        ALOGE("Can not open snd device");
         return -EPERM;
     }
     /* rpc_snd_set_volume(
@@ -388,7 +388,7 @@ static status_t set_volume_rpc(uint32_t device,
      args.volume = volume;
 
      if (ioctl(fd, SND_SET_VOLUME, &args) < 0) {
-         LOGE("snd_set_volume error.");
+         ALOGE("snd_set_volume error.");
          close(fd);
          return -EIO;
      }
@@ -445,7 +445,7 @@ static status_t do_route_audio_rpc(uint32_t device,
 
     fd = open("/dev/msm_snd", O_RDWR);
     if (fd < 0) {
-        LOGE("Can not open snd device");
+        ALOGE("Can not open snd device");
         return -EPERM;
     }
     // RPC call to switch audio path
@@ -464,7 +464,7 @@ static status_t do_route_audio_rpc(uint32_t device,
     args.mic_mute = mic_mute ? SND_MUTE_MUTED : SND_MUTE_UNMUTED;
 
     if (ioctl(fd, SND_SET_DEVICE, &args) < 0) {
-        LOGE("snd_set_device error.");
+        ALOGE("snd_set_device error.");
         close(fd);
         return -EIO;
     }
@@ -577,7 +577,7 @@ status_t AudioHardware::doRouting()
     if (sndDevice != -1 && sndDevice != mCurSndDevice) {
         ret = doAudioRouteOrMute(sndDevice);
         if ((*msm72xx_enable_audpp) == 0 ) {
-            LOGE("Could not open msm72xx_enable_audpp()");
+            ALOGE("Could not open msm72xx_enable_audpp()");
         } else {
             msm72xx_enable_audpp(audProcess);
         }
@@ -713,7 +713,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         ALOGV("open driver");
         status = ::open("/dev/msm_pcm_out", O_RDWR);
         if (status < 0) {
-            LOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
+            ALOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
             goto Error;
         }
         mFd = status;
@@ -723,7 +723,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         struct msm_audio_config config;
         status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
         if (status < 0) {
-            LOGE("Cannot read config");
+            ALOGE("Cannot read config");
             goto Error;
         }
 
@@ -735,7 +735,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         config.codec_type = CODEC_TYPE_PCM;
         status = ioctl(mFd, AUDIO_SET_CONFIG, &config);
         if (status < 0) {
-            LOGE("Cannot set config");
+            ALOGE("Cannot set config");
             goto Error;
         }
 
@@ -904,14 +904,14 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
 
     ALOGV("AudioStreamInMSM72xx::set(%d, %d, %u)", *pFormat, *pChannels, *pRate);
     if (mFd >= 0) {
-        LOGE("Audio record already open");
+        ALOGE("Audio record already open");
         return -EPERM;
     }
 
     // open audio input device
     status_t status = ::open("/dev/msm_pcm_in", O_RDWR);
     if (status < 0) {
-        LOGE("Cannot open /dev/msm_pcm_in errno: %d", errno);
+        ALOGE("Cannot open /dev/msm_pcm_in errno: %d", errno);
         goto Error;
     }
     mFd = status;
@@ -921,7 +921,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     struct msm_audio_config config;
     status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
     if (status < 0) {
-        LOGE("Cannot read config");
+        ALOGE("Cannot read config");
         goto Error;
     }
 
@@ -933,7 +933,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     config.codec_type = CODEC_TYPE_PCM;
     status = ioctl(mFd, AUDIO_SET_CONFIG, &config);
     if (status < 0) {
-        LOGE("Cannot set config");
+        ALOGE("Cannot set config");
         if (ioctl(mFd, AUDIO_GET_CONFIG, &config) == 0) {
             if (config.channel_count == 1) {
                 *pChannels = AudioSystem::CHANNEL_IN_MONO;
@@ -948,7 +948,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     ALOGV("confirm config");
     status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
     if (status < 0) {
-        LOGE("Cannot read config");
+        ALOGE("Cannot read config");
         goto Error;
     }
     ALOGV("buffer_size: %u", config.buffer_size);
@@ -979,14 +979,14 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
     msm72xx_set_audpre_params = (int (*)(int, int))::dlsym(acoustic, "msm72xx_set_audpre_params");
     status = msm72xx_set_audpre_params(audpre_index, tx_iir_index);
     if (status < 0)
-        LOGE("Cannot set audpre parameters");
+        ALOGE("Cannot set audpre parameters");
 
     int (*msm72xx_enable_audpre)(int, int, int);
     msm72xx_enable_audpre = (int (*)(int, int, int))::dlsym(acoustic, "msm72xx_enable_audpre");
     mAcoustics = acoustic_flags;
     status = msm72xx_enable_audpre((int)acoustic_flags, audpre_index, tx_iir_index);
     if (status < 0)
-        LOGE("Cannot enable audpre");
+        ALOGE("Cannot enable audpre");
 
     return NO_ERROR;
 
@@ -1025,7 +1025,7 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
         mHardware->clearCurDevice();
         mHardware->doRouting();
         if (ioctl(mFd, AUDIO_START, 0)) {
-            LOGE("Error starting record");
+            ALOGE("Error starting record");
             standby();
             return -1;
         }

@@ -127,7 +127,7 @@ AudioHardware::AudioHardware() :
     }
     set_acoustic_parameters = (int (*)(void))::dlsym(acoustic, "set_acoustic_parameters");
     if ((*set_acoustic_parameters) == 0 ) {
-        LOGE("Could not open set_acoustic_parameters()");
+        ALOGE("Could not open set_acoustic_parameters()");
         return;
     }
 
@@ -163,7 +163,7 @@ AudioHardware::AudioHardware() :
     ept = mBTEndpoints;
     snd_get_bt_endpoint = (int (*)(msm_bt_endpoint *))::dlsym(acoustic, "snd_get_bt_endpoint");
     if ((*snd_get_bt_endpoint) == 0 ) {
-        LOGE("Could not open snd_get_bt_endpoint()");
+        ALOGE("Could not open snd_get_bt_endpoint()");
         return;
     }
     snd_get_bt_endpoint(mBTEndpoints);
@@ -341,12 +341,12 @@ static status_t set_mic_mute(bool _mute)
     int fd = -1;
     fd = open("/dev/msm_audio_ctl", O_RDWR);
     if (fd < 0) {
-        LOGE("Cannot open msm_audio_ctl device\n");
+        ALOGE("Cannot open msm_audio_ctl device\n");
         return -1;
     }
     ALOGD("Setting mic mute to %d\n", mute);
     if (ioctl(fd, AUDIO_SET_MUTE, &mute)) {
-        LOGE("Cannot set mic mute on current device\n");
+        ALOGE("Cannot set mic mute on current device\n");
         close(fd);
         return -1;
     }
@@ -459,7 +459,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
                 if (fd_a1026 < 0) {
                     fd_a1026 = open("/dev/audience_a1026", O_RDWR);
                     if (fd_a1026 < 0) {
-                        LOGE("Cannot open audience_a1026 device (%d)\n", fd_a1026);
+                        ALOGE("Cannot open audience_a1026 device (%d)\n", fd_a1026);
                         mA1026Lock.unlock();
                         return -1;
                     }
@@ -470,7 +470,7 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
                 if (!rc) {
                     mNoiseSuppressionState = noiseSuppressionState;
                 } else {
-                    LOGE("Failed to set noise suppression %s", value.string());
+                    ALOGE("Failed to set noise suppression %s", value.string());
                 }
                 close(fd_a1026);
                 fd_a1026 = -1;
@@ -597,7 +597,7 @@ static status_t set_volume_rpc(uint32_t volume)
     int fd = -1;
     fd = open("/dev/msm_audio_ctl", O_RDWR);
     if (fd < 0) {
-        LOGE("Cannot open msm_audio_ctl device\n");
+        ALOGE("Cannot open msm_audio_ctl device\n");
         return -1;
     }
     volume *= 20; //percentage
@@ -715,7 +715,7 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall, uint32_t r
         mic_device = TTY_HEADSET_MIC;
         ALOGD("TTY HCO headset");
     } else {
-        LOGE("unknown device %d", device);
+        ALOGE("unknown device %d", device);
         return -1;
     }
 
@@ -725,7 +725,7 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall, uint32_t r
         if (fd_fm_device < 0) {
             fd_fm_device = open("/dev/msm_htc_fm", O_RDWR);
             if (fd_fm_device < 0) {
-                LOGE("Cannot open msm_htc_fm device");
+                ALOGE("Cannot open msm_htc_fm device");
                 return -1;
             }
             ALOGD("Opened msm_htc_fm for FM radio");
@@ -739,20 +739,20 @@ static status_t do_route_audio_dev_ctrl(uint32_t device, bool inCall, uint32_t r
 
     fd = open("/dev/msm_audio_ctl", O_RDWR);
     if (fd < 0)        {
-       LOGE("Cannot open msm_audio_ctl");
+       ALOGE("Cannot open msm_audio_ctl");
        return -1;
     }
     path[0] = out_device;
     path[1] = rx_acdb_id;
     if (ioctl(fd, AUDIO_SWITCH_DEVICE, &path)) {
-       LOGE("Cannot switch audio device");
+       ALOGE("Cannot switch audio device");
        close(fd);
        return -1;
     }
     path[0] = mic_device;
     path[1] = tx_acdb_id;
     if (ioctl(fd, AUDIO_SWITCH_DEVICE, &path)) {
-       LOGE("Cannot switch mic device");
+       ALOGE("Cannot switch mic device");
        close(fd);
        return -1;
     }
@@ -765,14 +765,14 @@ Incall:
             fd = open("/dev/msm_audio_ctl", O_RDWR);
 
             if (fd < 0) {
-                LOGE("Cannot open msm_audio_ctl");
+                ALOGE("Cannot open msm_audio_ctl");
                 return -1;
             }
         }
         path[0] = rx_acdb_id;
         path[1] = tx_acdb_id;
         if (ioctl(fd, AUDIO_START_VOICE, &path)) {
-            LOGE("Cannot start voice");
+            ALOGE("Cannot start voice");
             close(fd);
             return -1;
         }
@@ -784,12 +784,12 @@ Incall:
             fd = open("/dev/msm_audio_ctl", O_RDWR);
 
             if (fd < 0) {
-                LOGE("Cannot open msm_audio_ctl");
+                ALOGE("Cannot open msm_audio_ctl");
                 return -1;
             }
         }
         if (ioctl(fd, AUDIO_STOP_VOICE, NULL)) {
-               LOGE("Cannot stop voice");
+               ALOGE("Cannot stop voice");
                close(fd);
                return -1;
         }
@@ -880,12 +880,12 @@ status_t AudioHardware::get_batt_temp(int *batt_temp)
     char get_batt_temp[6] = { 0 };
 
     if ((fd = open(fn, O_RDONLY)) < 0) {
-        LOGE("%s: cannot open %s: %s\n", __FUNCTION__, fn, strerror(errno));
+        ALOGE("%s: cannot open %s: %s\n", __FUNCTION__, fn, strerror(errno));
         return UNKNOWN_ERROR;
     }
 
     if ((len = read(fd, get_batt_temp, sizeof(get_batt_temp))) <= 1) {
-        LOGE("read battery temp fail: %s\n", strerror(errno));
+        ALOGE("read battery temp fail: %s\n", strerror(errno));
         close(fd);
         return BAD_VALUE;
     }
@@ -915,14 +915,14 @@ status_t AudioHardware::doA1026_init(void)
         fd_a1026 = open(path, O_RDWR | O_NONBLOCK, 0);
 
     if (fd_a1026 < 0) {
-        LOGE("Cannot open %s %d\n", path, fd_a1026);
+        ALOGE("Cannot open %s %d\n", path, fd_a1026);
         support_a1026 = 0;
         goto open_drv_err;
     }
 
     fw_fd = open(fn, O_RDONLY);
     if (fw_fd < 0) {
-        LOGE("Fail to open %s\n", fn);
+        ALOGE("Fail to open %s\n", fn);
         goto ld_img_error;
     } else {
         ALOGD("open %s success\n", fn);
@@ -930,7 +930,7 @@ status_t AudioHardware::doA1026_init(void)
 
     rc = fstat(fw_fd, &fw_stat);
     if (rc < 0) {
-        LOGE("Cannot stat file %s: %s\n", fn, strerror(errno));
+        ALOGE("Cannot stat file %s: %s\n", fn, strerror(errno));
         goto ld_img_error;
     }
 
@@ -939,7 +939,7 @@ status_t AudioHardware::doA1026_init(void)
     ALOGD("Firmware %s size %d\n", fn, remaining);
 
     if (remaining > sizeof(local_vpimg_buf)) {
-        LOGE("File %s size %d exceeds internal limit %d\n",
+        ALOGE("File %s size %d exceeds internal limit %d\n",
              fn, remaining, sizeof(local_vpimg_buf));
         goto ld_img_error;
     }
@@ -947,7 +947,7 @@ status_t AudioHardware::doA1026_init(void)
     while (remaining) {
         nr = read(fw_fd, ptr, remaining);
         if (nr < 0) {
-            LOGE("Error reading firmware: %s\n", strerror(errno));
+            ALOGE("Error reading firmware: %s\n", strerror(errno));
             goto ld_img_error;
         }
         else if (!nr) {
@@ -972,7 +972,7 @@ status_t AudioHardware::doA1026_init(void)
         ALOGD("audience_a1026 init OK\n");
         mA1026Init = 1;
     } else
-        LOGE("audience_a1026 init failed\n");
+        ALOGE("audience_a1026 init failed\n");
 
 ld_img_error:
     if (fw_fd >= 0)
@@ -1084,7 +1084,7 @@ status_t AudioHardware::do_tpa2018_control(int mode)
 
         fd = open("/dev/tpa2018d1", O_RDWR);
         if (fd < 0) {
-            LOGE("can't open /dev/tpa2018d1 %d", fd);
+            ALOGE("can't open /dev/tpa2018d1 %d", fd);
             return -1;
         }
 
@@ -1095,7 +1095,7 @@ status_t AudioHardware::do_tpa2018_control(int mode)
         } while (--retry);
 
         if (rc < 0) {
-            LOGE("ioctl TPA2018_SET_MODE failed: %s", strerror(errno));
+            ALOGE("ioctl TPA2018_SET_MODE failed: %s", strerror(errno));
         } else
             ALOGD("Update TPA2018_SET_MODE to mode %d success", mode);
 
@@ -1118,7 +1118,7 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
     if (fd_a1026 < 0) {
         fd_a1026 = open("/dev/audience_a1026", O_RDWR);
         if (fd_a1026 < 0) {
-            LOGE("Cannot open audience_a1026 device (%d)\n", fd_a1026);
+            ALOGE("Cannot open audience_a1026 device (%d)\n", fd_a1026);
             mA1026Lock.unlock();
             return -1;
         }
@@ -1308,17 +1308,17 @@ status_t AudioHardware::doAudience_A1026_Control(int Mode, bool Record, uint32_t
                 /* after doA1026_init(), fd_a1026 is -1*/
                 fd_a1026 = open("/dev/audience_a1026", O_RDWR);
                 if (fd_a1026 < 0) {
-                    LOGE("A1026 Fatal Error: unable to open A1026 after hard reset\n");
+                    ALOGE("A1026 Fatal Error: unable to open A1026 after hard reset\n");
                 } else {
                     rc = ioctl(fd_a1026, A1026_SET_CONFIG, &new_pathid);
                     if (!rc) {
                         old_pathid = new_pathid;
                     } else {
-                        LOGE("A1026 Fatal Error: unable to A1026_SET_CONFIG after hard reset\n");
+                        ALOGE("A1026 Fatal Error: unable to A1026_SET_CONFIG after hard reset\n");
                     }
                 }
             } else
-                LOGE("A1026 Fatal Error: Re-init A1026 Failed\n");
+                ALOGE("A1026 Fatal Error: Re-init A1026 Failed\n");
         }
     }
 
@@ -1597,7 +1597,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         status = ::open("/dev/msm_pcm_out", O_RDWR);
         if (status < 0) {
             if (errCount++ < 10) {
-                LOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
+                ALOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
             }
             release_wake_lock(kOutputWakelockStr);
             goto Error;
@@ -1610,7 +1610,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         struct msm_audio_config config;
         status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
         if (status < 0) {
-            LOGE("Cannot read pcm_out config");
+            ALOGE("Cannot read pcm_out config");
             goto Error;
         }
 
@@ -1622,7 +1622,7 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         config.codec_type = CODEC_TYPE_PCM;
         status = ioctl(mFd, AUDIO_SET_CONFIG, &config);
         if (status < 0) {
-            LOGE("Cannot set config");
+            ALOGE("Cannot set config");
             goto Error;
         }
 
@@ -1634,13 +1634,13 @@ ssize_t AudioHardware::AudioStreamOutMSM72xx::write(const void* buffer, size_t b
         uint32_t acdb_id = mHardware->getACDB(MOD_PLAY, mHardware->get_snd_dev());
         status = ioctl(mFd, AUDIO_START, &acdb_id);
         if (status < 0) {
-            LOGE("Cannot start pcm playback");
+            ALOGE("Cannot start pcm playback");
             goto Error;
         }
 
         status = ioctl(mFd, AUDIO_SET_VOLUME, &stream_volume);
         if (status < 0) {
-            LOGE("Cannot start pcm playback");
+            ALOGE("Cannot start pcm playback");
             goto Error;
         }
     }
@@ -1800,7 +1800,7 @@ status_t AudioHardware::AudioStreamInMSM72xx::set(
 
     ALOGV("AudioStreamInMSM72xx::set(%d, %d, %u)", *pFormat, *pChannels, *pRate);
     if (mFd >= 0) {
-        LOGE("Audio record already open");
+        ALOGE("Audio record already open");
         return -EPERM;
     }
 
@@ -1837,7 +1837,7 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
             // open audio input device
             status = ::open("/dev/msm_pcm_in", O_RDWR);
             if (status < 0) {
-                LOGE("Cannot open /dev/msm_pcm_in errno: %d", errno);
+                ALOGE("Cannot open /dev/msm_pcm_in errno: %d", errno);
                 ALOGV("release input wakelock");
                 release_wake_lock(kInputWakelockStr);
                 goto Error;
@@ -1850,7 +1850,7 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
             struct msm_audio_config config;
             status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
             if (status < 0) {
-                LOGE("Cannot read config");
+                ALOGE("Cannot read config");
                 goto Error;
             }
 
@@ -1862,7 +1862,7 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
             config.codec_type = CODEC_TYPE_PCM;
             status = ioctl(mFd, AUDIO_SET_CONFIG, &config);
             if (status < 0) {
-                LOGE("Cannot set config");
+                ALOGE("Cannot set config");
                 goto Error;
             }
 
@@ -1879,7 +1879,7 @@ ssize_t AudioHardware::AudioStreamInMSM72xx::read( void* buffer, ssize_t bytes)
 
         uint32_t acdb_id = mHardware->getACDB(MOD_REC, mHardware->get_snd_dev());
         if (ioctl(mFd, AUDIO_START, &acdb_id)) {
-            LOGE("Error starting record");
+            ALOGE("Error starting record");
             goto Error;
         }
     }

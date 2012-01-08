@@ -52,14 +52,14 @@
 #define E(x...) do {                                        \
         fprintf(stderr, "%s(%d) ", __FUNCTION__, __LINE__); \
         fprintf(stderr, ##x);                               \
-        LOGE(x);                                            \
+        ALOGE(x);                                            \
     } while(0)
 
 #define FAILIF(cond, msg...) do {                                              \
         if (__builtin_expect (cond, 0)) {                                      \
             fprintf(stderr, "%s:%s:(%d): ", __FILE__, __FUNCTION__, __LINE__); \
             fprintf(stderr, ##msg);                                            \
-            LOGE(msg);                                                         \
+            ALOGE(msg);                                                         \
         }                                                                      \
     } while(0)
 

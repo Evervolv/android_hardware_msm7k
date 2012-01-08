@@ -200,7 +200,7 @@ static int init_pmem_area_locked(private_module_t* m)
         size_t size;
         pmem_region region;
         if (ioctl(master_fd, PMEM_GET_TOTAL_SIZE, &region) < 0) {
-            LOGE("PMEM_GET_TOTAL_SIZE failed, limp mode");
+            ALOGE("PMEM_GET_TOTAL_SIZE failed, limp mode");
             size = 8<<20;   // 8 MiB
         } else {
             size = region.len;
@@ -247,11 +247,11 @@ static int init_gpu_area_locked(private_module_t* m)
 {
     int err = 0;
     int gpu = open("/dev/msm_hw3dm", O_RDWR, 0);
-    LOGE_IF(gpu<0, "could not open hw3dm (%s)", strerror(errno));
+    ALOGE_IF(gpu<0, "could not open hw3dm (%s)", strerror(errno));
     if (gpu >= 0) {
         struct hw3d_region regions[HW3D_NUM_REGIONS];
         if (ioctl(gpu, HW3D_GET_REGIONS, regions) < 0) {
-            LOGE("HW3D_GET_REGIONS failed (%s)", strerror(errno));
+            ALOGE("HW3D_GET_REGIONS failed (%s)", strerror(errno));
             err = -errno;
         } else {
             ALOGD("smi: offset=%08lx, len=%08lx, phys=%p", 
@@ -272,7 +272,7 @@ static int init_gpu_area_locked(private_module_t* m)
                     gpu, regions[FB_ARENA].map_offset);
 
             if (base == MAP_FAILED) {
-                LOGE("mmap EBI1 (%s)", strerror(errno));
+                ALOGE("mmap EBI1 (%s)", strerror(errno));
                 err = -errno;
                 base = 0;
                 close(gpu);
@@ -338,7 +338,7 @@ static int gralloc_alloc_buffer(alloc_device_t* dev,
 try_ashmem:
         fd = ashmem_create_region("gralloc-buffer", size);
         if (fd < 0) {
-            LOGE("couldn't create ashmem (%s)", strerror(errno));
+            ALOGE("couldn't create ashmem (%s)", strerror(errno));
             err = -errno;
         }
     } else if ((usage & GRALLOC_USAGE_HW_RENDER) == 0) {
@@ -384,7 +384,7 @@ try_ashmem:
                 err = 0;
                 goto try_ashmem;
             } else {
-                LOGE("couldn't open pmem (%s)", strerror(errno));
+                ALOGE("couldn't open pmem (%s)", strerror(errno));
             }
         }
     } else {
@@ -451,7 +451,7 @@ try_ashmem:
         }
     }
     
-    LOGE_IF(err, "gralloc failed err=%s", strerror(-err));
+    ALOGE_IF(err, "gralloc failed err=%s", strerror(-err));
     
     return err;
 }
@@ -534,7 +534,7 @@ static int gralloc_free(alloc_device_t* dev,
             if (hnd->fd >= 0) {
                 struct pmem_region sub = { hnd->offset, hnd->size };
                 int err = ioctl(hnd->fd, PMEM_UNMAP, &sub);
-                LOGE_IF(err<0, "PMEM_UNMAP failed (%s), "
+                ALOGE_IF(err<0, "PMEM_UNMAP failed (%s), "
                         "fd=%d, sub.offset=%lu, sub.size=%lu",
                         strerror(errno), hnd->fd, hnd->offset, hnd->size);
                 if (err == 0) {

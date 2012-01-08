@@ -362,7 +362,7 @@ namespace android {
         p.set("iso-values", "auto,high");
 
         if (setParameters(p) != NO_ERROR) {
-            LOGE("Failed to set default parameters?!");
+            ALOGE("Failed to set default parameters?!");
         }
     }
 
@@ -378,7 +378,7 @@ namespace android {
             ALOGV("loading libqcamera");
             libqcamera = ::dlopen("liboemcamera.so", RTLD_NOW);
             if (!libqcamera) {
-                LOGE("FATAL ERROR: could not dlopen liboemcamera.so: %s", dlerror());
+                ALOGE("FATAL ERROR: could not dlopen liboemcamera.so: %s", dlerror());
                 return;
             }
   
@@ -584,7 +584,7 @@ namespace android {
                             "snapshot camera");
 
         if (!mRawHeap->initialized()) {
-            LOGE("initRaw X failed: error initializing mRawHeap");
+            ALOGE("initRaw X failed: error initializing mRawHeap");
             mRawHeap = NULL;
             return false;
         }
@@ -598,7 +598,7 @@ namespace android {
                                0,
                                "jpeg");
             if (!mJpegHeap->initialized()) {
-                LOGE("initRaw X failed: error initializing mJpegHeap.");
+                ALOGE("initRaw X failed: error initializing mJpegHeap.");
                 mJpegHeap = NULL;
                 mRawHeap = NULL;
                 return false;
@@ -620,7 +620,7 @@ namespace android {
         // is in the idle or init state before destroying this object.
 
         if (mCameraState != QCS_IDLE && mCameraState != QCS_INIT) {
-            LOGE("Serious error: the camera state is %s, "
+            ALOGE("Serious error: the camera state is %s, "
                  "not QCS_IDLE or QCS_INIT!",
                  getCameraStateStr(mCameraState));
         }
@@ -702,7 +702,7 @@ namespace android {
         ALOGV("startPreview E");
 
         if (mCameraState == QCS_PREVIEW_IN_PROGRESS) {
-            LOGE("startPreview is already in progress, doing nothing.");
+            ALOGE("startPreview is already in progress, doing nothing.");
             // We might want to change the callback functions while preview is
             // streaming, for example to enable or disable recording.
             setCallbacks(pcb, puser, rcb, ruser);
@@ -726,13 +726,13 @@ namespace android {
         }
 
         if (mCameraState != QCS_IDLE) {
-            LOGE("startPreview X Camera state is %s, expecting QCS_IDLE!",
+            ALOGE("startPreview X Camera state is %s, expecting QCS_IDLE!",
                 getCameraStateStr(mCameraState));
             return INVALID_OPERATION;
         }
 
         if (!initPreview()) {
-            LOGE("startPreview X initPreview failed.  Not starting preview.");
+            ALOGE("startPreview X initPreview failed.  Not starting preview.");
             return UNKNOWN_ERROR;
         }
 
@@ -752,7 +752,7 @@ namespace android {
             }
         }
         else {
-            LOGE("startPreview failed: sensor error.");
+            ALOGE("startPreview failed: sensor error.");
             mCameraState = QCS_ERROR;
         }
 
@@ -766,7 +766,7 @@ namespace android {
         ALOGV("stopPreviewInternal E");
 
         if (mCameraState != QCS_PREVIEW_IN_PROGRESS) {
-            LOGE("Preview not in progress!");
+            ALOGE("Preview not in progress!");
             return;
         }
 
@@ -870,7 +870,7 @@ namespace android {
         Mutex::Autolock lock(&mStateLock);
 
         if (mCameraState != QCS_PREVIEW_IN_PROGRESS) {
-            LOGE("Invalid camera state %s: expecting QCS_PREVIEW_IN_PROGRESS,"
+            ALOGE("Invalid camera state %s: expecting QCS_PREVIEW_IN_PROGRESS,"
                  " cannot start autofocus!",
                  getCameraStateStr(mCameraState));
             return INVALID_OPERATION;
@@ -921,7 +921,7 @@ namespace android {
         }
 
         if (mCameraState != QCS_IDLE) {
-            LOGE("takePicture: %sunexpected state %d, expecting QCS_IDLE",
+            ALOGE("takePicture: %sunexpected state %d, expecting QCS_IDLE",
                  (last_state == QCS_PREVIEW_IN_PROGRESS ?
                   "(stop preview) " : ""),
                  mCameraState);
@@ -934,12 +934,12 @@ namespace android {
         }
 
         if (!initRaw(jpeg_cb != NULL)) {
-            LOGE("initRaw failed.  Not taking picture.");
+            ALOGE("initRaw failed.  Not taking picture.");
             return UNKNOWN_ERROR;
         }
 
         if (mCameraState != QCS_IDLE) {
-            LOGE("takePicture: (init raw) "
+            ALOGE("takePicture: (init raw) "
                  "unexpected state %d, expecting QCS_IDLE",
                 mCameraState);
             // If we had to stop preview in order to take a picture, and
@@ -1033,7 +1033,7 @@ namespace android {
         // correct setting is yuv420sp.
         if ((strcmp(params.getPreviewFormat(), "yuv420sp") != 0) &&
                 (strcmp(params.getPreviewFormat(), "yuv422sp") != 0)) {
-            LOGE("Only yuv420sp preview is supported");
+            ALOGE("Only yuv420sp preview is supported");
             return INVALID_OPERATION;
         }
 
@@ -1274,7 +1274,7 @@ namespace android {
                 LINK_camera_release_frame();
             }
         }
-        else LOGE("Preview frame virtual address %p is out of range!",
+        else ALOGE("Preview frame virtual address %p is out of range!",
                   frame->buf_Virt_Addr);
     }
 
@@ -1335,7 +1335,7 @@ namespace android {
                 mRawPictureCallback(mRawHeap->mBuffers[offset],
                                     mPictureCallbackCookie);
             }
-            else LOGE("receiveRawPicture: virtual address %p is out of range!",
+            else ALOGE("receiveRawPicture: virtual address %p is out of range!",
                       frame->buf_Virt_Addr);
         }
         else ALOGV("Raw-picture callback was canceled--skipping.");
@@ -1370,7 +1370,7 @@ namespace android {
                     if (sscanf(what##_str, fmt, &what) == 1)                              \
                         pt.what = what;                                                   \
                     else {                                                                \
-                        LOGE("GPS " #what " %s could not"                                 \
+                        ALOGE("GPS " #what " %s could not"                                 \
                               " be parsed as a " #desc,                                   \
                               what##_str);                                                \
                         encode_location = false;                                          \
@@ -1395,7 +1395,7 @@ namespace android {
                 ALOGV("receiveRawPicture: setting image location ALT %d LAT %lf LON %lf",
                      pt.altitude, pt.latitude, pt.longitude);
                 if (LINK_camera_set_position(&pt, NULL, NULL) != CAMERA_SUCCESS) {
-                    LOGE("receiveRawPicture: camera_set_position: error");
+                    ALOGE("receiveRawPicture: camera_set_position: error");
                     /* return; */ // not a big deal
                 }
             }
@@ -1444,7 +1444,7 @@ namespace android {
              size);
 
         if (size > remaining) {
-            LOGE("receiveJpegPictureFragment: size %d exceeds what "
+            ALOGE("receiveJpegPictureFragment: size %d exceeds what "
                  "remains in JPEG heap (%d), truncating",
                  size,
                  remaining);
@@ -1605,7 +1605,7 @@ namespace android {
             rotation = 0;
         }
         else if (rotation % 90) {
-            LOGE("rotation %d is not a multiple of 90 degrees!  Defaulting to zero.",
+            ALOGE("rotation %d is not a multiple of 90 degrees!  Defaulting to zero.",
                  rotation);
             rotation = 0;
         }
@@ -1676,7 +1676,7 @@ namespace android {
                  th_w, th_h, th_q);
             int ret = LINK_camera_set_thumbnail_properties(th_w, th_h, th_q);
             if (ret != CAMERA_SUCCESS) {
-                LOGE("LINK_camera_set_thumbnail_properties returned %d", ret);
+                ALOGE("LINK_camera_set_thumbnail_properties returned %d", ret);
             }
         }
 
@@ -1706,7 +1706,7 @@ namespace android {
     void QualcommCameraHardware::setCameraDimensions()
     {
         if (mCameraState != QCS_IDLE) {
-            LOGE("set camera dimensions: expecting state QCS_IDLE, not %s",
+            ALOGE("set camera dimensions: expecting state QCS_IDLE, not %s",
                  getCameraStateStr(mCameraState));
             return;
         }
@@ -1780,7 +1780,7 @@ namespace android {
         // Promote the singleton to make sure that we do not get destroyed
         // while this callback is executing.
         if (UNLIKELY(getInstance() == NULL)) {
-            LOGE("camera object has been destroyed--returning immediately");
+            ALOGE("camera object has been destroyed--returning immediately");
             return;
         }
 
@@ -1792,7 +1792,7 @@ namespace android {
             // Autofocus failures occur relatively often and are not fatal, so
             // we do not transition to QCS_ERROR for them.
             if (func != CAMERA_FUNC_START_FOCUS) {
-                LOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d) in state %s.",
+                ALOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d) in state %s.",
                      parm4,
                      obj->getCameraStateStr(obj->mCameraState));
                 TRANSITION_ALWAYS(QCS_ERROR);
@@ -1814,12 +1814,12 @@ namespace android {
                             obj->receivePreviewFrame((camera_frame_type *)parm4);
                         break;
                     case QCS_INTERNAL_PREVIEW_STOPPING:
-                        LOGE("camera cb: discarding preview frame "
+                        ALOGE("camera cb: discarding preview frame "
                              "while stopping preview");
                         break;
                     default:
                         // transition to QCS_ERROR
-                        LOGE("camera cb: invalid state %s for preview!",
+                        ALOGE("camera cb: invalid state %s for preview!",
                              obj->getCameraStateStr(obj->mCameraState));
                         break;
                     }
@@ -1829,7 +1829,7 @@ namespace android {
                     break;
                 default:
                     // transition to QCS_ERROR
-                    LOGE("unexpected cb %d for CAMERA_FUNC_START_PREVIEW.",
+                    ALOGE("unexpected cb %d for CAMERA_FUNC_START_PREVIEW.",
                          cb);
                 }
                 break;
@@ -1872,7 +1872,7 @@ namespace android {
                     }
                 } else {  // transition to QCS_ERROR
                     if (obj->mCameraState == QCS_ERROR) {
-                        LOGE("camera cb: invalid state %s for taking a picture!",
+                        ALOGE("camera cb: invalid state %s for taking a picture!",
                              obj->getCameraStateStr(obj->mCameraState));
                         obj->mRawPictureCallback(NULL, obj->mPictureCallbackCookie);
                         obj->mJpegPictureCallback(NULL, obj->mPictureCallbackCookie);
@@ -1892,7 +1892,7 @@ namespace android {
                         obj->receiveJpegPictureFragment(
                             (JPEGENC_CBrtnType *)parm4);
                     }
-                    else LOGE("camera cb: invalid state %s for receiving "
+                    else ALOGE("camera cb: invalid state %s for receiving "
                               "JPEG fragment!",
                               obj->getCameraStateStr(obj->mCameraState));
                     break;
@@ -1916,13 +1916,13 @@ namespace android {
                         TRANSITION(QCS_WAITING_JPEG, QCS_IDLE);
                     }
                     // transition to QCS_ERROR
-                    else LOGE("camera cb: invalid state %s for "
+                    else ALOGE("camera cb: invalid state %s for "
                               "receiving JPEG!",
                               obj->getCameraStateStr(obj->mCameraState));
                     break;
                 default:
                     // transition to QCS_ERROR
-                    LOGE("camera cb: unknown cb %d for JPEG!", cb);
+                    ALOGE("camera cb: unknown cb %d for JPEG!", cb);
                 }
             break;
             CAMERA_STATE(CAMERA_FUNC_START_FOCUS) {
@@ -1946,10 +1946,10 @@ namespace android {
                     }
                         break;
                     case CAMERA_EXIT_CB_ABORT:
-                        LOGE("camera cb: autofocus aborted");
+                        ALOGE("camera cb: autofocus aborted");
                         break;
                     case CAMERA_EXIT_CB_FAILED: {
-                        LOGE("camera cb: autofocus failed");
+                        ALOGE("camera cb: autofocus failed");
                         Mutex::Autolock lock(&obj->mStateLock);
                         if (obj->mAutoFocusCallback) {
                             obj->mAutoFocusCallback(false,
@@ -1959,14 +1959,14 @@ namespace android {
                     }
                         break;
                     default:
-                        LOGE("camera cb: unknown cb %d for "
+                        ALOGE("camera cb: unknown cb %d for "
                              "CAMERA_FUNC_START_FOCUS!", cb);
                     }
                 }
             } break;
         default:
             // transition to QCS_ERROR
-            LOGE("Unknown camera-callback status %d", cb);
+            ALOGE("Unknown camera-callback status %d", cb);
         }
     }
 
@@ -2073,7 +2073,7 @@ namespace android {
             
             mFd = mHeap->getHeapID();
             if (::ioctl(mFd, PMEM_GET_SIZE, &mSize)) {
-                LOGE("pmem pool %s ioctl(PMEM_GET_SIZE) error %s (%d)",
+                ALOGE("pmem pool %s ioctl(PMEM_GET_SIZE) error %s (%d)",
                      pmem_pool,
                      ::strerror(errno), errno);
                 mHeap.clear();
@@ -2086,7 +2086,7 @@ namespace android {
             
             completeInitialization();
         }
-        else LOGE("pmem pool %s error: could not create master heap!",
+        else ALOGE("pmem pool %s error: could not create master heap!",
                   pmem_pool);
     }
 

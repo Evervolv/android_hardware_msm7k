@@ -89,7 +89,7 @@ int PmemUserspaceAllocator::init_pmem_area_locked()
         size_t size = 0;
         err = deps.getPmemTotalSize(fd, &size);
         if (err < 0) {
-            LOGE("%s: PMEM_GET_TOTAL_SIZE failed (%d), limp mode", pmemdev,
+            ALOGE("%s: PMEM_GET_TOTAL_SIZE failed (%d), limp mode", pmemdev,
                     err);
             size = 8<<20;   // 8 MiB
         }
@@ -98,7 +98,7 @@ int PmemUserspaceAllocator::init_pmem_area_locked()
         void* base = deps.mmap(0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd,
                 0);
         if (base == MAP_FAILED) {
-            LOGE("%s: failed to map pmem master fd: %s", pmemdev,
+            ALOGE("%s: failed to map pmem master fd: %s", pmemdev,
                     strerror(deps.getErrno()));
             err = -deps.getErrno();
             base = 0;
@@ -109,7 +109,7 @@ int PmemUserspaceAllocator::init_pmem_area_locked()
             master_base = base;
         }
     } else {
-        LOGE("%s: failed to open pmem device: %s", pmemdev,
+        ALOGE("%s: failed to open pmem device: %s", pmemdev,
                 strerror(deps.getErrno()));
         err = -deps.getErrno();
     }
@@ -127,7 +127,7 @@ int PmemUserspaceAllocator::init_pmem_area()
         // first time, try to initialize pmem
         err = init_pmem_area_locked();
         if (err) {
-            LOGE("%s: failed to initialize pmem area", pmemdev);
+            ALOGE("%s: failed to initialize pmem area", pmemdev);
             master_fd = err;
         }
     } else if (err < 0) {
@@ -152,7 +152,7 @@ int PmemUserspaceAllocator::alloc_pmem_buffer(size_t size, int usage,
         int offset = allocator.allocate(size);
         if (offset < 0) {
             // no more pmem memory
-            LOGE("%s: no more pmem available", pmemdev);
+            ALOGE("%s: no more pmem available", pmemdev);
             err = -ENOMEM;
         } else {
             int openFlags = get_open_flags(usage);
@@ -172,7 +172,7 @@ int PmemUserspaceAllocator::alloc_pmem_buffer(size_t size, int usage,
                 err = deps.mapPmem(fd, offset, size);
 
             if (err < 0) {
-                LOGE("%s: failed to initialize pmem sub-heap: %d", pmemdev,
+                ALOGE("%s: failed to initialize pmem sub-heap: %d", pmemdev,
                         err);
                 err = -deps.getErrno();
                 deps.close(fd);
@@ -199,7 +199,7 @@ int PmemUserspaceAllocator::free_pmem_buffer(size_t size, void* base, int offset
     int err = 0;
     if (fd >= 0) {
         int err = deps.unmapPmem(fd, offset, size);
-        LOGE_IF(err<0, "PMEM_UNMAP failed (%s), fd=%d, sub.offset=%u, "
+        ALOGE_IF(err<0, "PMEM_UNMAP failed (%s), fd=%d, sub.offset=%u, "
                 "sub.size=%u", strerror(deps.getErrno()), fd, offset, size);
         if (err == 0) {
             // we can't deallocate the memory in case of UNMAP failure
@@ -281,7 +281,7 @@ int PmemKernelAllocator::alloc_pmem_buffer(size_t size, int usage,
 
     void* base = deps.mmap(0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (base == MAP_FAILED) {
-        LOGE("%s: failed to map pmem fd: %s", pmemdev,
+        ALOGE("%s: failed to map pmem fd: %s", pmemdev,
              strerror(deps.getErrno()));
         err = -deps.getErrno();
         deps.close(fd);
