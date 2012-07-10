@@ -101,7 +101,7 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
         m->info.activate = FB_ACTIVATE_VBL;
         m->info.yoffset = offset / m->finfo.line_length;
         if (ioctl(m->framebuffer->fd, FBIOPUT_VSCREENINFO, &m->info) == -1) {
-            LOGE("FBIOPUT_VSCREENINFO failed");
+            ALOGE("FBIOPUT_VSCREENINFO failed");
             m->base.unlock(&m->base, buffer); 
             return -errno;
         }
@@ -202,14 +202,14 @@ int mapFrameBufferLocked(struct private_module_t* module)
     if (ioctl(fd, FBIOPUT_VSCREENINFO, &info) == -1) {
         info.yres_virtual = info.yres;
         flags &= ~PAGE_FLIP;
-        LOGW("FBIOPUT_VSCREENINFO failed, page flipping not supported");
+        ALOGW("FBIOPUT_VSCREENINFO failed, page flipping not supported");
     }
 
     if (info.yres_virtual < info.yres * 2) {
         // we need at least 2 for page-flipping
         info.yres_virtual = info.yres;
         flags &= ~PAGE_FLIP;
-        LOGW("page flipping not supported (yres_virtual=%d, requested=%d)",
+        ALOGW("page flipping not supported (yres_virtual=%d, requested=%d)",
                 info.yres_virtual, info.yres*2);
     }
 
@@ -239,7 +239,7 @@ int mapFrameBufferLocked(struct private_module_t* module)
     float ydpi = (info.yres * 25.4f) / info.height;
     float fps  = refreshRate / 1000.0f;
 
-    LOGI(   "using (fd=%d)\n"
+    ALOGI(   "using (fd=%d)\n"
             "id           = %s\n"
             "xres         = %d px\n"
             "yres         = %d px\n"
@@ -261,7 +261,7 @@ int mapFrameBufferLocked(struct private_module_t* module)
             info.blue.offset, info.blue.length
     );
 
-    LOGI(   "width        = %d mm (%f dpi)\n"
+    ALOGI(   "width        = %d mm (%f dpi)\n"
             "height       = %d mm (%f dpi)\n"
             "refresh rate = %.2f Hz\n",
             info.width,  xdpi,
@@ -298,7 +298,7 @@ int mapFrameBufferLocked(struct private_module_t* module)
 
     void* vaddr = mmap(0, fbSize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (vaddr == MAP_FAILED) {
-        LOGE("Error mapping the framebuffer (%s)", strerror(errno));
+        ALOGE("Error mapping the framebuffer (%s)", strerror(errno));
         return -errno;
     }
     module->framebuffer->base = intptr_t(vaddr);
@@ -367,7 +367,7 @@ int fb_device_open(hw_module_t const* module, const char* name,
             if (m->finfo.reserved[0] == 0x5444 &&
                     m->finfo.reserved[1] == 0x5055) {
                 dev->device.setUpdateRect = fb_setUpdateRect;
-                LOGD("UPDATE_ON_DEMAND supported");
+                ALOGD("UPDATE_ON_DEMAND supported");
             }
 
             *device = &dev->device.common;
@@ -412,5 +412,5 @@ msm_copy_buffer(buffer_handle_t handle, int fd, int width, int height,
     blit.req.src_rect.h = blit.req.dst_rect.h = h;
 
     if (ioctl(fd, MSMFB_BLIT, &blit))
-        LOGE("MSMFB_BLIT failed = %d", -errno);
+        ALOGE("MSMFB_BLIT failed = %d", -errno);
 }

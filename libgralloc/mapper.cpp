@@ -63,13 +63,13 @@ static int gralloc_map(gralloc_module_t const* module,
         void* mappedAddress = mmap(0, size,
                 PROT_READ|PROT_WRITE, MAP_SHARED, hnd->fd, 0);
         if (mappedAddress == MAP_FAILED) {
-            LOGE("Could not mmap handle %p, fd=%d (%s)",
+            ALOGE("Could not mmap handle %p, fd=%d (%s)",
                     handle, hnd->fd, strerror(errno));
             hnd->base = 0;
             return -errno;
         }
         hnd->base = intptr_t(mappedAddress) + hnd->offset;
-        //LOGD("gralloc_map() succeeded fd=%d, off=%d, size=%d, vaddr=%p", 
+        //ALOGD("gralloc_map() succeeded fd=%d, off=%d, size=%d, vaddr=%p", 
         //        hnd->fd, hnd->offset, hnd->size, mappedAddress);
     }
     *vaddr = (void*)hnd->base;
@@ -87,9 +87,9 @@ static int gralloc_unmap(gralloc_module_t const* module,
         base = (void*)(intptr_t(base) - hnd->offset);
         size += hnd->offset;
 #endif
-        //LOGD("unmapping from %p, size=%d, flags=%08x", base, size, hnd->flags);
+        //ALOGD("unmapping from %p, size=%d, flags=%08x", base, size, hnd->flags);
         if (munmap(base, size) < 0) {
-            LOGE("Could not unmap %s", strerror(errno));
+            ALOGE("Could not unmap %s", strerror(errno));
         }
     }
     hnd->base = 0;

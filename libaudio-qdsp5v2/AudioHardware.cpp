@@ -91,7 +91,7 @@ AudioStreamOut* AudioHardware::openOutputStream(
 void AudioHardware::closeOutputStream(AudioStreamOut* out) {
     Mutex::Autolock lock(mLock);
     if (mOutput == 0 || mOutput != out) {
-        LOGW("Attempt to close invalid output stream");
+        ALOGW("Attempt to close invalid output stream");
     }
     else {
         delete mOutput;
@@ -135,7 +135,7 @@ String8 AudioHardware::getParameters(const String8& keys)
     AudioParameter request = AudioParameter(keys);
     AudioParameter reply = AudioParameter();
 
-    LOGV("getParameters() %s", keys.string());
+    ALOGV("getParameters() %s", keys.string());
 
     return reply.toString();
 }
@@ -152,7 +152,7 @@ status_t AudioHardware::setVoiceVolume(float v)
 
 status_t AudioHardware::setMasterVolume(float v)
 {
-    LOGI("Set master volume to %f.\n", v);
+    ALOGI("Set master volume to %f.\n", v);
     // We return an error code here to let the audioflinger do in-software
     // volume on top of the maximum volume that we set through the SND API.
     // return error - software mixer will handle it
@@ -214,30 +214,30 @@ AudioHardware::AudioStreamOutQ5V2::~AudioStreamOutQ5V2()
 
 ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t bytes)
 {
-    // LOGD("AudioStreamOutQ5V2::write(%p, %u)", buffer, bytes);
+    // ALOGD("AudioStreamOutQ5V2::write(%p, %u)", buffer, bytes);
     status_t status = NO_INIT;
     size_t count = bytes;
     const uint8_t* p = static_cast<const uint8_t*>(buffer);
 
     if (mStandby) {
-        LOGV("open pcm_out driver");
+        ALOGV("open pcm_out driver");
         status = ::open("/dev/msm_pcm_out", O_RDWR);
         if (status < 0) {
-                LOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
+                ALOGE("Cannot open /dev/msm_pcm_out errno: %d", errno);
             goto Error;
         }
         mFd = status;
 
         // configuration
-        LOGV("get config");
+        ALOGV("get config");
         struct msm_audio_config config;
         status = ioctl(mFd, AUDIO_GET_CONFIG, &config);
         if (status < 0) {
-            LOGE("Cannot read pcm_out config");
+            ALOGE("Cannot read pcm_out config");
             goto Error;
         }
 
-        LOGV("set pcm_out config");
+        ALOGV("set pcm_out config");
         config.channel_count = AudioSystem::popCount(channels());
         config.sample_rate = mSampleRate;
         config.buffer_size = mBufferSize;
@@ -245,25 +245,25 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
 //        config.codec_type = CODEC_TYPE_PCM;
         status = ioctl(mFd, AUDIO_SET_CONFIG, &config);
         if (status < 0) {
-            LOGE("Cannot set config");
+            ALOGE("Cannot set config");
             goto Error;
         }
 
-        LOGV("buffer_size: %u", config.buffer_size);
-        LOGV("buffer_count: %u", config.buffer_count);
-        LOGV("channel_count: %u", config.channel_count);
-        LOGV("sample_rate: %u", config.sample_rate);
+        ALOGV("buffer_size: %u", config.buffer_size);
+        ALOGV("buffer_count: %u", config.buffer_count);
+        ALOGV("channel_count: %u", config.channel_count);
+        ALOGV("sample_rate: %u", config.sample_rate);
 
 #if 0
         status = ioctl(mFd, AUDIO_START, &acdb_id);
         if (status < 0) {
-            LOGE("Cannot start pcm playback");
+            ALOGE("Cannot start pcm playback");
             goto Error;
         }
 
         status = ioctl(mFd, AUDIO_SET_VOLUME, &stream_volume);
         if (status < 0) {
-            LOGE("Cannot start pcm playback");
+            ALOGE("Cannot start pcm playback");
             goto Error;
         }
 #endif
@@ -278,7 +278,7 @@ ssize_t AudioHardware::AudioStreamOutQ5V2::write(const void* buffer, size_t byte
         } else {
             if (errno != EAGAIN) return written;
             mRetryCount++;
-            LOGW("EAGAIN - retry");
+            ALOGW("EAGAIN - retry");
         }
     }
 
@@ -303,7 +303,7 @@ status_t AudioHardware::AudioStreamOutQ5V2::standby()
         mFd = -1;
     }
     mStandby = true;
-    LOGI("AudioHardware pcm playback is going to standby.");
+    ALOGI("AudioHardware pcm playback is going to standby.");
     return status;
 }
 
@@ -325,7 +325,7 @@ status_t AudioHardware::AudioStreamOutQ5V2::setParameters(const String8& keyValu
 String8 AudioHardware::AudioStreamOutQ5V2::getParameters(const String8& keys)
 {
     AudioParameter param = AudioParameter(keys);
-    LOGV("AudioStreamOutQ5V2::getParameters() %s", param.toString().string());
+    ALOGV("AudioStreamOutQ5V2::getParameters() %s", param.toString().string());
     return param.toString();
 }
 

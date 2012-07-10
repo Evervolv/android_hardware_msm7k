@@ -32,8 +32,8 @@
 #include "pmemalloc.h"
 
 
-#define BEGIN_FUNC LOGV("%s begin", __PRETTY_FUNCTION__)
-#define END_FUNC LOGV("%s end", __PRETTY_FUNCTION__)
+#define BEGIN_FUNC ALOGV("%s begin", __PRETTY_FUNCTION__)
+#define END_FUNC ALOGV("%s end", __PRETTY_FUNCTION__)
 
 
 static int get_open_flags(int usage) {
@@ -89,7 +89,7 @@ int PmemUserspaceAllocator::init_pmem_area_locked()
         size_t size = 0;
         err = deps.getPmemTotalSize(fd, &size);
         if (err < 0) {
-            LOGE("%s: PMEM_GET_TOTAL_SIZE failed (%d), limp mode", pmemdev,
+            ALOGE("%s: PMEM_GET_TOTAL_SIZE failed (%d), limp mode", pmemdev,
                     err);
             size = 8<<20;   // 8 MiB
         }
@@ -98,7 +98,7 @@ int PmemUserspaceAllocator::init_pmem_area_locked()
         void* base = deps.mmap(0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd,
                 0);
         if (base == MAP_FAILED) {
-            LOGE("%s: failed to map pmem master fd: %s", pmemdev,
+            ALOGE("%s: failed to map pmem master fd: %s", pmemdev,
                     strerror(deps.getErrno()));
             err = -deps.getErrno();
             base = 0;
@@ -109,7 +109,7 @@ int PmemUserspaceAllocator::init_pmem_area_locked()
             master_base = base;
         }
     } else {
-        LOGE("%s: failed to open pmem device: %s", pmemdev,
+        ALOGE("%s: failed to open pmem device: %s", pmemdev,
                 strerror(deps.getErrno()));
         err = -deps.getErrno();
     }
@@ -127,7 +127,7 @@ int PmemUserspaceAllocator::init_pmem_area()
         // first time, try to initialize pmem
         err = init_pmem_area_locked();
         if (err) {
-            LOGE("%s: failed to initialize pmem area", pmemdev);
+            ALOGE("%s: failed to initialize pmem area", pmemdev);
             master_fd = err;
         }
     } else if (err < 0) {
@@ -143,7 +143,7 @@ int PmemUserspaceAllocator::init_pmem_area()
 
 
 int PmemUserspaceAllocator::alloc_pmem_buffer(size_t size, int usage,
-        void** pBase, int* pOffset, int* pFd, int format)
+        void** pBase, int* pOffset, int* pFd)
 {
     BEGIN_FUNC;
     int err = init_pmem_area();
@@ -152,12 +152,12 @@ int PmemUserspaceAllocator::alloc_pmem_buffer(size_t size, int usage,
         int offset = allocator.allocate(size);
         if (offset < 0) {
             // no more pmem memory
-            LOGE("%s: no more pmem available", pmemdev);
+            ALOGE("%s: no more pmem available", pmemdev);
             err = -ENOMEM;
         } else {
             int openFlags = get_open_flags(usage);
 
-            //LOGD("%s: allocating pmem at offset 0x%p", pmemdev, offset);
+            //ALOGD("%s: allocating pmem at offset 0x%p", pmemdev, offset);
 
             // now create the "sub-heap"
             int fd = deps.open(pmemdev, openFlags, 0);
@@ -172,28 +172,20 @@ int PmemUserspaceAllocator::alloc_pmem_buffer(size_t size, int usage,
                 err = deps.mapPmem(fd, offset, size);
 
             if (err < 0) {
-                LOGE("%s: failed to initialize pmem sub-heap: %d", pmemdev,
+                ALOGE("%s: failed to initialize pmem sub-heap: %d", pmemdev,
                         err);
                 err = -deps.getErrno();
                 deps.close(fd);
                 allocator.deallocate(offset);
                 fd = -1;
             } else {
-                LOGV("%s: mapped fd %d at offset %d, size %d", pmemdev, fd, offset, size);
+                ALOGV("%s: mapped fd %d at offset %d, size %d", pmemdev, fd, offset, size);
                 memset((char*)base + offset, 0, size);
-                //Clean cache before flushing to ensure pmem is properly flushed
-                err = deps.cleanPmem(fd, (unsigned long) base + offset, offset, size);
-                if (err < 0) {
-                    LOGE("cleanPmem failed: (%s)", strerror(deps.getErrno()));
-                }
-#ifdef HOST
-                 cacheflush(intptr_t(base) + offset, intptr_t(base) + offset + size, 0);
-#endif
                 *pBase = base;
                 *pOffset = offset;
                 *pFd = fd;
             }
-            //LOGD_IF(!err, "%s: allocating pmem size=%d, offset=%d", pmemdev, size, offset);
+            //ALOGD_IF(!err, "%s: allocating pmem size=%d, offset=%d", pmemdev, size, offset);
         }
     }
     END_FUNC;
@@ -207,7 +199,7 @@ int PmemUserspaceAllocator::free_pmem_buffer(size_t size, void* base, int offset
     int err = 0;
     if (fd >= 0) {
         int err = deps.unmapPmem(fd, offset, size);
-        LOGE_IF(err<0, "PMEM_UNMAP failed (%s), fd=%d, sub.offset=%u, "
+        ALOGE_IF(err<0, "PMEM_UNMAP failed (%s), fd=%d, sub.offset=%u, "
                 "sub.size=%u", strerror(deps.getErrno()), fd, offset, size);
         if (err == 0) {
             // we can't deallocate the memory in case of UNMAP failure
@@ -232,8 +224,9 @@ PmemUserspaceAllocator::Deps::~Deps()
     END_FUNC;
 }
 
-PmemKernelAllocator::PmemKernelAllocator(Deps& deps):
-    deps(deps)
+PmemKernelAllocator::PmemKernelAllocator(Deps& deps, const char* pmemdev):
+    deps(deps),
+    pmemdev(pmemdev)
 {
     BEGIN_FUNC;
     END_FUNC;
@@ -266,7 +259,7 @@ static unsigned clp2(unsigned x) {
 
 
 int PmemKernelAllocator::alloc_pmem_buffer(size_t size, int usage,
-        void** pBase,int* pOffset, int* pFd, int format)
+        void** pBase,int* pOffset, int* pFd)
 {
     BEGIN_FUNC;
 
@@ -274,50 +267,21 @@ int PmemKernelAllocator::alloc_pmem_buffer(size_t size, int usage,
     *pOffset = 0;
     *pFd = -1;
 
-    int err, offset = 0;
+    int err;
     int openFlags = get_open_flags(usage);
-    const char *device;
-    
-    if (usage & GRALLOC_USAGE_PRIVATE_PMEM_ADSP) {
-        device = DEVICE_PMEM_ADSP;
-    } else if (usage & GRALLOC_USAGE_PRIVATE_PMEM_SMIPOOL) {
-        device = DEVICE_PMEM_SMIPOOL;
-    } else if ((usage & GRALLOC_USAGE_EXTERNAL_DISP) ||
-               (usage & GRALLOC_USAGE_PROTECTED)) {
-        int tempFd = deps.open(DEVICE_PMEM_SMIPOOL, openFlags, 0);
-        if (tempFd < 0) {
-            device = DEVICE_PMEM_ADSP;
-        } else {
-            close(tempFd);
-            device = DEVICE_PMEM_SMIPOOL;
-        }
-    } else {
-        LOGE("Invalid device");
-        return -EINVAL;
-    }
-
-    int fd = deps.open(device, openFlags, 0);
+    int fd = deps.open(pmemdev, openFlags, 0);
     if (fd < 0) {
         err = -deps.getErrno();
         END_FUNC;
-        LOGE("Error opening %s", device);
         return err;
     }
 
     // The size should already be page aligned, now round it up to a power of 2.
-    //size = clp2(size);
-
-    if (format == HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED) {
-        // Tile format buffers need physical alignment to 8K
-        err = deps.alignPmem(fd, size, 8192);
-        if (err < 0) {
-            LOGE("alignPmem failed");
-        }
-    }
+    size = clp2(size);
 
     void* base = deps.mmap(0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (base == MAP_FAILED) {
-        LOGE("%s: failed to map pmem fd: %s", device,
+        ALOGE("%s: failed to map pmem fd: %s", pmemdev,
              strerror(deps.getErrno()));
         err = -deps.getErrno();
         deps.close(fd);
@@ -341,12 +305,12 @@ int PmemKernelAllocator::free_pmem_buffer(size_t size, void* base, int offset, i
     BEGIN_FUNC;
     // The size should already be page aligned, now round it up to a power of 2
     // like we did when allocating.
-    //size = clp2(size);
+    size = clp2(size);
 
     int err = deps.munmap(base, size);
     if (err < 0) {
         err = deps.getErrno();
-        LOGW("error unmapping pmem fd: %s", strerror(err));
+        ALOGW("%s: error unmapping pmem fd: %s", pmemdev, strerror(err));
         return -err;
     }
     END_FUNC;

@@ -49,7 +49,7 @@ static inline void print_time()
 #if PRINT_TIME
     struct timeval time; 
     gettimeofday(&time, NULL);
-    LOGV("time: %lld us.", time.tv_sec * 1000000LL + time.tv_usec);
+    ALOGV("time: %lld us.", time.tv_sec * 1000000LL + time.tv_usec);
 #endif
 }
 
@@ -304,7 +304,7 @@ namespace android {
           mRawSize(0),
           mPreviewCount(0)
     {
-        LOGV("constructor EX");
+        ALOGV("constructor EX");
     }
 
     void QualcommCameraHardware::initDefaultParameters()
@@ -362,7 +362,7 @@ namespace android {
         p.set("iso-values", "auto,high");
 
         if (setParameters(p) != NO_ERROR) {
-            LOGE("Failed to set default parameters?!");
+            ALOGE("Failed to set default parameters?!");
         }
     }
 
@@ -375,10 +375,10 @@ namespace android {
 
 #if DLOPEN_LIBQCAMERA == 1
 
-            LOGV("loading libqcamera");
+            ALOGV("loading libqcamera");
             libqcamera = ::dlopen("liboemcamera.so", RTLD_NOW);
             if (!libqcamera) {
-                LOGE("FATAL ERROR: could not dlopen liboemcamera.so: %s", dlerror());
+                ALOGE("FATAL ERROR: could not dlopen liboemcamera.so: %s", dlerror());
                 return;
             }
   
@@ -452,26 +452,26 @@ namespace android {
             
             rex_init_lock.lock();
             LINK_rex_start();
-            LOGV("waiting for REX to initialize.");
+            ALOGV("waiting for REX to initialize.");
             rex_init_wait.wait(rex_init_lock);
-            LOGV("REX is ready.");
+            ALOGV("REX is ready.");
             rex_init_lock.unlock();
             
             LINK_camera_init();
             
-            LOGV("starting REX emulation");
+            ALOGV("starting REX emulation");
             // NOTE: camera_start() takes (height, width), not (width, height).
             LINK_camera_start(camera_cb, this,
                               mPreviewHeight, mPreviewWidth);
             while(mCameraState != QCS_IDLE &&
                   mCameraState != QCS_ERROR) {
-                LOGV("init camera: waiting for QCS_IDLE");
+                ALOGV("init camera: waiting for QCS_IDLE");
                 mStateWait.wait(mStateLock);
-                LOGV("init camera: woke up");
+                ALOGV("init camera: woke up");
             }
-            LOGV("init camera: initializing parameters");
+            ALOGV("init camera: initializing parameters");
         }
-        else LOGV("camera hardware has been started already");
+        else ALOGV("camera hardware has been started already");
     }
 
     status_t QualcommCameraHardware::dump(int fd, const Vector<String16>& args) const
@@ -520,7 +520,7 @@ namespace android {
 
         setCameraDimensions();
 
-        LOGV("initPreview: preview size=%dx%d", mPreviewWidth, mPreviewHeight);
+        ALOGV("initPreview: preview size=%dx%d", mPreviewWidth, mPreviewHeight);
 
         mPreviewFrameSize = mPreviewWidth * mPreviewHeight * 3 / 2; // reality
         mPreviewHeap =
@@ -549,7 +549,7 @@ namespace android {
     // Called with mStateLock held!
     bool QualcommCameraHardware::initRaw(bool initJpegHeap)
     {
-        LOGV("initRaw E");
+        ALOGV("initRaw E");
         startCameraIfNecessary();
 
         // Tell libqcamera what the preview and raw dimensions are.  We
@@ -561,7 +561,7 @@ namespace android {
 
         setCameraDimensions();
 
-        LOGV("initRaw: picture size=%dx%d",
+        ALOGV("initRaw: picture size=%dx%d",
              mRawWidth, mRawHeight);
 
         // Note that we enforce yuv420 in setParameters().
@@ -571,10 +571,10 @@ namespace android {
 
         mJpegMaxSize = mRawWidth * mRawHeight * 2;
 
-        LOGV("initRaw: clearing old mJpegHeap.");
+        ALOGV("initRaw: clearing old mJpegHeap.");
         mJpegHeap = NULL;
 
-        LOGV("initRaw: initializing mRawHeap.");
+        ALOGV("initRaw: initializing mRawHeap.");
         mRawHeap =
             new RawPmemPool("/dev/pmem_camera",
                             kRawFrameHeaderSize + mJpegMaxSize, /* worst */
@@ -584,13 +584,13 @@ namespace android {
                             "snapshot camera");
 
         if (!mRawHeap->initialized()) {
-            LOGE("initRaw X failed: error initializing mRawHeap");
+            ALOGE("initRaw X failed: error initializing mRawHeap");
             mRawHeap = NULL;
             return false;
         }
 
         if (initJpegHeap) {
-            LOGV("initRaw: initializing mJpegHeap.");
+            ALOGV("initRaw: initializing mJpegHeap.");
             mJpegHeap =
                 new AshmemPool(mJpegMaxSize,
                                kJpegBufferCount,
@@ -598,20 +598,20 @@ namespace android {
                                0,
                                "jpeg");
             if (!mJpegHeap->initialized()) {
-                LOGE("initRaw X failed: error initializing mJpegHeap.");
+                ALOGE("initRaw X failed: error initializing mJpegHeap.");
                 mJpegHeap = NULL;
                 mRawHeap = NULL;
                 return false;
             }
         }
 
-        LOGV("initRaw X success");
+        ALOGV("initRaw X success");
         return true;
     }
 
     void QualcommCameraHardware::release()
     {
-        LOGV("release E");
+        ALOGV("release E");
 
         Mutex::Autolock l(&mLock);
 
@@ -620,7 +620,7 @@ namespace android {
         // is in the idle or init state before destroying this object.
 
         if (mCameraState != QCS_IDLE && mCameraState != QCS_INIT) {
-            LOGE("Serious error: the camera state is %s, "
+            ALOGE("Serious error: the camera state is %s, "
                  "not QCS_IDLE or QCS_INIT!",
                  getCameraStateStr(mCameraState));
         }
@@ -635,45 +635,45 @@ namespace android {
             mCameraState = QCS_INTERNAL_STOPPING;
             mStateLock.unlock();
 
-            LOGV("stopping camera.");
+            ALOGV("stopping camera.");
             LINK_camera_stop(stop_camera_cb, this);
 
             mStateLock.lock();
             if (mCameraState == QCS_INTERNAL_STOPPING) {
                 while (mCameraState != QCS_INIT &&
                        mCameraState != QCS_ERROR) {
-                    LOGV("stopping camera: waiting for QCS_INIT");
+                    ALOGV("stopping camera: waiting for QCS_INIT");
                     mStateWait.wait(mStateLock);
                 }
             }
 
-            LOGV("Shutting REX down.");
+            ALOGV("Shutting REX down.");
             LINK_rex_shutdown();
-            LOGV("REX has shut down.");
+            ALOGV("REX has shut down.");
 #if DLOPEN_LIBQCAMERA
             if (libqcamera) {
                 unsigned ref = ::dlclose(libqcamera);
-                LOGV("dlclose(libqcamera) refcount %d", ref);
+                ALOGV("dlclose(libqcamera) refcount %d", ref);
             }
 #endif
             mCameraState = QCS_INIT;
         }
         mStateLock.unlock();
 
-        LOGV("release X");
+        ALOGV("release X");
     }
 
     QualcommCameraHardware::~QualcommCameraHardware()
     {
-        LOGV("~QualcommCameraHardware E");
+        ALOGV("~QualcommCameraHardware E");
         Mutex::Autolock singletonLock(&singleton_lock);
         singleton.clear();
-        LOGV("~QualcommCameraHardware X");
+        ALOGV("~QualcommCameraHardware X");
     }
 
     sp<IMemoryHeap> QualcommCameraHardware::getPreviewHeap() const
     {
-        LOGV("getPreviewHeap");
+        ALOGV("getPreviewHeap");
         return mPreviewHeap != NULL ? mPreviewHeap->mHeap : NULL;
     }
 
@@ -699,10 +699,10 @@ namespace android {
         preview_callback pcb, void *puser,
         recording_callback rcb, void *ruser)
     {
-        LOGV("startPreview E");
+        ALOGV("startPreview E");
 
         if (mCameraState == QCS_PREVIEW_IN_PROGRESS) {
-            LOGE("startPreview is already in progress, doing nothing.");
+            ALOGE("startPreview is already in progress, doing nothing.");
             // We might want to change the callback functions while preview is
             // streaming, for example to enable or disable recording.
             setCallbacks(pcb, puser, rcb, ruser);
@@ -720,19 +720,19 @@ namespace android {
             mCameraState == QCS_WAITING_JPEG) {
             while (mCameraState != QCS_IDLE &&
                    mCameraState != QCS_ERROR) {
-                LOGV("waiting for QCS_IDLE");
+                ALOGV("waiting for QCS_IDLE");
                 mStateWait.wait(mStateLock);
             }
         }
 
         if (mCameraState != QCS_IDLE) {
-            LOGE("startPreview X Camera state is %s, expecting QCS_IDLE!",
+            ALOGE("startPreview X Camera state is %s, expecting QCS_IDLE!",
                 getCameraStateStr(mCameraState));
             return INVALID_OPERATION;
         }
 
         if (!initPreview()) {
-            LOGE("startPreview X initPreview failed.  Not starting preview.");
+            ALOGE("startPreview X initPreview failed.  Not starting preview.");
             return UNKNOWN_ERROR;
         }
 
@@ -747,26 +747,26 @@ namespace android {
         if (qret == CAMERA_SUCCESS) {
             while(mCameraState != QCS_PREVIEW_IN_PROGRESS &&
                   mCameraState != QCS_ERROR) {
-                LOGV("waiting for QCS_PREVIEW_IN_PROGRESS");
+                ALOGV("waiting for QCS_PREVIEW_IN_PROGRESS");
                 mStateWait.wait(mStateLock);
             }
         }
         else {
-            LOGE("startPreview failed: sensor error.");
+            ALOGE("startPreview failed: sensor error.");
             mCameraState = QCS_ERROR;
         }
 
-        LOGV("startPreview X");
+        ALOGV("startPreview X");
         return mCameraState == QCS_PREVIEW_IN_PROGRESS ?
             NO_ERROR : UNKNOWN_ERROR;
     }
 
     void QualcommCameraHardware::stopPreviewInternal()
     {
-        LOGV("stopPreviewInternal E");
+        ALOGV("stopPreviewInternal E");
 
         if (mCameraState != QCS_PREVIEW_IN_PROGRESS) {
-            LOGE("Preview not in progress!");
+            ALOGE("Preview not in progress!");
             return;
         }
 
@@ -788,15 +788,15 @@ namespace android {
         LINK_camera_stop_preview();
         while (mCameraState != QCS_IDLE &&
                mCameraState != QCS_ERROR)  {
-            LOGV("waiting for QCS_IDLE");
+            ALOGV("waiting for QCS_IDLE");
             mStateWait.wait(mStateLock);
         }
 
-        LOGV("stopPreviewInternal: Freeing preview heap.");
+        ALOGV("stopPreviewInternal: Freeing preview heap.");
         mPreviewHeap = NULL;
         mPreviewCallback = NULL;
 
-        LOGV("stopPreviewInternal: X Preview has stopped.");
+        ALOGV("stopPreviewInternal: X Preview has stopped.");
     }
 
     status_t QualcommCameraHardware::startPreview(
@@ -810,7 +810,7 @@ namespace android {
     }
 
     void QualcommCameraHardware::stopPreview() {
-        LOGV("stopPreview: E");
+        ALOGV("stopPreview: E");
         Mutex::Autolock l(&mLock);
         if (!setCallbacks(NULL, NULL,
                           mRecordingCallback,
@@ -818,7 +818,7 @@ namespace android {
             Mutex::Autolock statelock(&mStateLock);
             stopPreviewInternal();
         }
-        LOGV("stopPreview: X");
+        ALOGV("stopPreview: X");
     }
 
     bool QualcommCameraHardware::previewEnabled() {
@@ -837,7 +837,7 @@ namespace android {
     }
 
     void QualcommCameraHardware::stopRecording() {
-        LOGV("stopRecording: E");
+        ALOGV("stopRecording: E");
         Mutex::Autolock l(&mLock);
         if (!setCallbacks(mPreviewCallback,
                           mPreviewCallbackCookie,
@@ -845,7 +845,7 @@ namespace android {
             Mutex::Autolock statelock(&mStateLock);
             stopPreviewInternal();
         }
-        LOGV("stopRecording: X");
+        ALOGV("stopRecording: X");
     }
 
     bool QualcommCameraHardware::recordingEnabled() {
@@ -865,19 +865,19 @@ namespace android {
     status_t QualcommCameraHardware::autoFocus(autofocus_callback af_cb,
                                                void *user)
     {
-        LOGV("Starting auto focus.");
+        ALOGV("Starting auto focus.");
         Mutex::Autolock l(&mLock);
         Mutex::Autolock lock(&mStateLock);
 
         if (mCameraState != QCS_PREVIEW_IN_PROGRESS) {
-            LOGE("Invalid camera state %s: expecting QCS_PREVIEW_IN_PROGRESS,"
+            ALOGE("Invalid camera state %s: expecting QCS_PREVIEW_IN_PROGRESS,"
                  " cannot start autofocus!",
                  getCameraStateStr(mCameraState));
             return INVALID_OPERATION;
         }
 
         if (mAutoFocusCallback != NULL) {
-            LOGV("Auto focus is already in progress");
+            ALOGV("Auto focus is already in progress");
             return mAutoFocusCallback == af_cb ? NO_ERROR : INVALID_OPERATION;
         }
 
@@ -892,7 +892,7 @@ namespace android {
                                                  jpeg_callback jpeg_cb,
                                                  void* user)
     {
-        LOGV("takePicture: E raw_cb = %p, jpeg_cb = %p",
+        ALOGV("takePicture: E raw_cb = %p, jpeg_cb = %p",
              raw_cb, jpeg_cb);
         print_time();
 
@@ -915,13 +915,13 @@ namespace android {
             mCameraState == QCS_WAITING_JPEG) {
             while (mCameraState != QCS_IDLE &&
                    mCameraState != QCS_ERROR) {
-                LOGV("waiting for QCS_IDLE");
+                ALOGV("waiting for QCS_IDLE");
                 mStateWait.wait(mStateLock);
             }
         }
 
         if (mCameraState != QCS_IDLE) {
-            LOGE("takePicture: %sunexpected state %d, expecting QCS_IDLE",
+            ALOGE("takePicture: %sunexpected state %d, expecting QCS_IDLE",
                  (last_state == QCS_PREVIEW_IN_PROGRESS ?
                   "(stop preview) " : ""),
                  mCameraState);
@@ -934,12 +934,12 @@ namespace android {
         }
 
         if (!initRaw(jpeg_cb != NULL)) {
-            LOGE("initRaw failed.  Not taking picture.");
+            ALOGE("initRaw failed.  Not taking picture.");
             return UNKNOWN_ERROR;
         }
 
         if (mCameraState != QCS_IDLE) {
-            LOGE("takePicture: (init raw) "
+            ALOGE("takePicture: (init raw) "
                  "unexpected state %d, expecting QCS_IDLE",
                 mCameraState);
             // If we had to stop preview in order to take a picture, and
@@ -970,13 +970,13 @@ namespace android {
                mCameraState != QCS_WAITING_JPEG &&
                mCameraState != QCS_IDLE &&
                mCameraState != QCS_ERROR)  {
-            LOGV("takePicture: waiting for QCS_WAITING_RAW or QCS_WAITING_JPEG");
+            ALOGV("takePicture: waiting for QCS_WAITING_RAW or QCS_WAITING_JPEG");
             mStateWait.wait(mStateLock);
-            LOGV("takePicture: woke up, state is %s",
+            ALOGV("takePicture: woke up, state is %s",
                  getCameraStateStr(mCameraState));
         }
 
-        LOGV("takePicture: X");
+        ALOGV("takePicture: X");
         print_time();
         return mCameraState != QCS_ERROR ?
             NO_ERROR : UNKNOWN_ERROR;
@@ -985,7 +985,7 @@ namespace android {
     status_t QualcommCameraHardware::cancelPicture(
         bool cancel_shutter, bool cancel_raw, bool cancel_jpeg)
     {
-        LOGV("cancelPicture: E cancel_shutter = %d, cancel_raw = %d, cancel_jpeg = %d",
+        ALOGV("cancelPicture: E cancel_shutter = %d, cancel_raw = %d, cancel_jpeg = %d",
              cancel_shutter, cancel_raw, cancel_jpeg);
         Mutex::Autolock l(&mLock);
         Mutex::Autolock stateLock(&mStateLock);
@@ -994,7 +994,7 @@ namespace android {
         case QCS_INTERNAL_RAW_REQUESTED:
         case QCS_WAITING_RAW:
         case QCS_WAITING_JPEG:
-            LOGV("camera state is %s, stopping picture.",
+            ALOGV("camera state is %s, stopping picture.",
                  getCameraStateStr(mCameraState));
 
             {
@@ -1006,23 +1006,23 @@ namespace android {
 
             while (mCameraState != QCS_IDLE &&
                    mCameraState != QCS_ERROR)  {
-                LOGV("cancelPicture: waiting for QCS_IDLE");
+                ALOGV("cancelPicture: waiting for QCS_IDLE");
                 mStateWait.wait(mStateLock);
             }
             break;
         default:
-            LOGV("not taking a picture (state %s)",
+            ALOGV("not taking a picture (state %s)",
                  getCameraStateStr(mCameraState));
         }
 
-        LOGV("cancelPicture: X");
+        ALOGV("cancelPicture: X");
         return NO_ERROR;
     }
 
     status_t QualcommCameraHardware::setParameters(
         const CameraParameters& params)
     {
-        LOGV("setParameters: E params = %p", &params);
+        ALOGV("setParameters: E params = %p", &params);
 
         Mutex::Autolock l(&mLock);
         Mutex::Autolock lock(&mStateLock);
@@ -1033,7 +1033,7 @@ namespace android {
         // correct setting is yuv420sp.
         if ((strcmp(params.getPreviewFormat(), "yuv420sp") != 0) &&
                 (strcmp(params.getPreviewFormat(), "yuv422sp") != 0)) {
-            LOGE("Only yuv420sp preview is supported");
+            ALOGE("Only yuv420sp preview is supported");
             return INVALID_OPERATION;
         }
 
@@ -1046,7 +1046,7 @@ namespace android {
         // find closest match that doesn't exceed app's request
         int width, height;
         params.getPreviewSize(&width, &height);
-        LOGV("requested size %d x %d", width, height);
+        ALOGV("requested size %d x %d", width, height);
         preview_size_type* ps = preview_sizes;
         size_t i;
         for (i = 0; i < PREVIEW_SIZE_COUNT; ++i, ++ps) {
@@ -1054,7 +1054,7 @@ namespace android {
         }
         // app requested smaller size than supported, use smallest size
         if (i == PREVIEW_SIZE_COUNT) ps--;
-        LOGV("actual size %d x %d", ps->width, ps->height);
+        ALOGV("actual size %d x %d", ps->width, ps->height);
         mParameters.setPreviewSize(ps->width, ps->height);
 
         mParameters.getPreviewSize(&mPreviewWidth, &mPreviewHeight);
@@ -1067,14 +1067,14 @@ namespace android {
 
         initCameraParameters();
 
-        LOGV("setParameters: X mCameraState=%d", mCameraState);
+        ALOGV("setParameters: X mCameraState=%d", mCameraState);
         return mCameraState == QCS_IDLE ?
             NO_ERROR : UNKNOWN_ERROR;
     }
 
     CameraParameters QualcommCameraHardware::getParameters() const
     {
-        LOGV("getParameters: EX");
+        ALOGV("getParameters: EX");
         return mParameters;
     }
 
@@ -1097,7 +1097,7 @@ namespace android {
 
     extern "C" sp<CameraHardwareInterface> HAL_openCameraHardware(int cameraId)
     {
-        LOGV("openCameraHardware: call createInstance");
+        ALOGV("openCameraHardware: call createInstance");
         return QualcommCameraHardware::createInstance();
     }
 
@@ -1108,13 +1108,13 @@ namespace android {
     // and return it.
     sp<CameraHardwareInterface> QualcommCameraHardware::createInstance()
     {
-        LOGV("createInstance: E");
+        ALOGV("createInstance: E");
 
         singleton_lock.lock();
         if (singleton != 0) {
             sp<CameraHardwareInterface> hardware = singleton.promote();
             if (hardware != 0) {
-                LOGV("createInstance: X return existing hardware=%p",
+                ALOGV("createInstance: X return existing hardware=%p",
                      &(*hardware));
                 singleton_lock.unlock();
                 return hardware;
@@ -1125,7 +1125,7 @@ namespace android {
             struct stat st;
             int rc = stat("/dev/oncrpc", &st);
             if (rc < 0) {
-                LOGV("createInstance: X failed to create hardware: %s",
+                ALOGV("createInstance: X failed to create hardware: %s",
                      strerror(errno));
                 singleton_lock.unlock();
                 return NULL;
@@ -1142,7 +1142,7 @@ namespace android {
         // it still exists, we need to call this function after we have set the
         // singleton.
         cam->initDefaultParameters();
-        LOGV("createInstance: X created hardware=%p", &(*hardware));
+        ALOGV("createInstance: X created hardware=%p", &(*hardware));
         return hardware;
     }
 
@@ -1170,13 +1170,13 @@ namespace android {
                 // against.
                 uint32_t vaddr = (uint32_t)(base + size*index);
 
-                LOGV("get_preview_mem: base %p MALLOC size %d index %d --> %p",
+                ALOGV("get_preview_mem: base %p MALLOC size %d index %d --> %p",
                      base, size, index, (void *)vaddr);
                 *phy_addr = vaddr;
                 return (void *)vaddr;
             }
         }
-        LOGV("get_preview_mem: X NULL");
+        ALOGV("get_preview_mem: X NULL");
         return NULL;
     }
 
@@ -1184,7 +1184,7 @@ namespace android {
                                                   uint32_t size,
                                                   uint32_t index)
     {
-        LOGV("free_preview_mem: EX NOP");
+        ALOGV("free_preview_mem: EX NOP");
         return;
     }
 
@@ -1201,13 +1201,13 @@ namespace android {
                 // patch it against.
                 uint32_t vaddr = (uint32_t)(base + size*index);
 
-                LOGV("get_raw_mem: base %p MALLOC size %d index %d --> %p",
+                ALOGV("get_raw_mem: base %p MALLOC size %d index %d --> %p",
                      base, size, index, (void *)vaddr);
                 *phy_addr = vaddr;
                 return (void *)vaddr;
             }
         }
-        LOGV("get_raw_mem: X NULL");
+        ALOGV("get_raw_mem: X NULL");
         return NULL;
     }
 
@@ -1215,7 +1215,7 @@ namespace android {
                                               uint32_t size,
                                               uint32_t index)
     {
-        LOGV("free_raw_mem: EX NOP");
+        ALOGV("free_raw_mem: EX NOP");
         return;
     }
 
@@ -1238,7 +1238,7 @@ namespace android {
                 (ssize_t)mPreviewHeap->mHeap->virtualSize()) {
 #if 0
             // frame->buffer includes the header, frame->buf_Virt_Addr skips it
-            LOGV("PREVIEW FRAME CALLBACK "
+            ALOGV("PREVIEW FRAME CALLBACK "
                  "base %p addr %p offset %ld "
                  "framesz %dx%d=%ld (expect %d) rotation %d "
                  "(index %ld) size %d header_size 0x%x",
@@ -1274,20 +1274,20 @@ namespace android {
                 LINK_camera_release_frame();
             }
         }
-        else LOGE("Preview frame virtual address %p is out of range!",
+        else ALOGE("Preview frame virtual address %p is out of range!",
                   frame->buf_Virt_Addr);
     }
 
     void
     QualcommCameraHardware::notifyShutter()
     {
-        LOGV("notifyShutter: E");
+        ALOGV("notifyShutter: E");
         print_time();
         Mutex::Autolock lock(&mStateLock);
         if (mShutterCallback)
             mShutterCallback(mPictureCallbackCookie);
         print_time();
-        LOGV("notifyShutter: X");
+        ALOGV("notifyShutter: X");
     }
 
     // Pass the pre-LPM raw picture to raw picture callback.
@@ -1295,7 +1295,7 @@ namespace android {
     // which startPreview() or takePicture() are called.
     void QualcommCameraHardware::receiveRawPicture(camera_frame_type *frame)
     {
-        LOGV("receiveRawPicture: E");
+        ALOGV("receiveRawPicture: E");
         print_time();
 
         Mutex::Autolock cbLock(&mCallbackLock);
@@ -1315,7 +1315,7 @@ namespace android {
 #if 0
                 // frame->buffer includes the header, frame->buf_Virt_Addr
                 // skips it.
-                LOGV("receiveRawPicture: RAW CALLBACK (CB %p) "
+                ALOGV("receiveRawPicture: RAW CALLBACK (CB %p) "
                      "base %p addr %p buffer %p offset %ld "
                      "framesz %dx%d=%ld (expect %d) rotation %d "
                      "(index %ld) size %d header_size 0x%x",
@@ -1335,13 +1335,13 @@ namespace android {
                 mRawPictureCallback(mRawHeap->mBuffers[offset],
                                     mPictureCallbackCookie);
             }
-            else LOGE("receiveRawPicture: virtual address %p is out of range!",
+            else ALOGE("receiveRawPicture: virtual address %p is out of range!",
                       frame->buf_Virt_Addr);
         }
-        else LOGV("Raw-picture callback was canceled--skipping.");
+        else ALOGV("Raw-picture callback was canceled--skipping.");
 
         print_time();
-        LOGV("receiveRawPicture: X");
+        ALOGV("receiveRawPicture: X");
     }
 
     // Encode the post-LPM raw picture.
@@ -1351,7 +1351,7 @@ namespace android {
     void
     QualcommCameraHardware::receivePostLpmRawPicture(camera_frame_type *frame)
     {
-        LOGV("receivePostLpmRawPicture: E");
+        ALOGV("receivePostLpmRawPicture: E");
         print_time();
         qualcomm_camera_state new_state = QCS_ERROR;
 
@@ -1364,20 +1364,20 @@ namespace android {
 #define PARSE_LOCATION(what,type,fmt,desc) do {                                           \
                 pt.what = 0;                                                              \
                 const char *what##_str = mParameters.get("gps-"#what);                    \
-                LOGV("receiveRawPicture: GPS PARM %s --> [%s]", "gps-"#what, what##_str); \
+                ALOGV("receiveRawPicture: GPS PARM %s --> [%s]", "gps-"#what, what##_str); \
                 if (what##_str) {                                                         \
                     type what = 0;                                                        \
                     if (sscanf(what##_str, fmt, &what) == 1)                              \
                         pt.what = what;                                                   \
                     else {                                                                \
-                        LOGE("GPS " #what " %s could not"                                 \
+                        ALOGE("GPS " #what " %s could not"                                 \
                               " be parsed as a " #desc,                                   \
                               what##_str);                                                \
                         encode_location = false;                                          \
                     }                                                                     \
                 }                                                                         \
                 else {                                                                    \
-                    LOGW("receiveRawPicture: GPS " #what " not specified: "               \
+                    ALOGW("receiveRawPicture: GPS " #what " not specified: "               \
                           "defaulting to zero in EXIF header.");                          \
                     encode_location = false;                                              \
                }                                                                          \
@@ -1392,14 +1392,14 @@ namespace android {
 #undef PARSE_LOCATION
 
             if (encode_location) {
-                LOGV("receiveRawPicture: setting image location ALT %d LAT %lf LON %lf",
+                ALOGV("receiveRawPicture: setting image location ALT %d LAT %lf LON %lf",
                      pt.altitude, pt.latitude, pt.longitude);
                 if (LINK_camera_set_position(&pt, NULL, NULL) != CAMERA_SUCCESS) {
-                    LOGE("receiveRawPicture: camera_set_position: error");
+                    ALOGE("receiveRawPicture: camera_set_position: error");
                     /* return; */ // not a big deal
                 }
             }
-            else LOGV("receiveRawPicture: not setting image location");
+            else ALOGV("receiveRawPicture: not setting image location");
 
             mJpegSize = 0;
             camera_handle.device = CAMERA_DEVICE_MEM;
@@ -1416,14 +1416,14 @@ namespace android {
             LINK_camera_encode_picture(frame, &camera_handle, camera_cb, this);
         }
         else {
-            LOGV("JPEG callback was cancelled--not encoding image.");
+            ALOGV("JPEG callback was cancelled--not encoding image.");
             // We need to keep the raw heap around until the JPEG is fully
             // encoded, because the JPEG encode uses the raw image contained in
             // that heap.
             mRawHeap = NULL;
         }                    
         print_time();
-        LOGV("receivePostLpmRawPicture: X");
+        ALOGV("receivePostLpmRawPicture: X");
     }
 
     void
@@ -1438,13 +1438,13 @@ namespace android {
         uint32_t remaining = mJpegHeap->mHeap->virtualSize();
         remaining -= mJpegSize;
 
-        LOGV("receiveJpegPictureFragment: (index %d status %d size %d)",
+        ALOGV("receiveJpegPictureFragment: (index %d status %d size %d)",
              index,
              encInfo->status,
              size);
 
         if (size > remaining) {
-            LOGE("receiveJpegPictureFragment: size %d exceeds what "
+            ALOGE("receiveJpegPictureFragment: size %d exceeds what "
                  "remains in JPEG heap (%d), truncating",
                  size,
                  remaining);
@@ -1462,7 +1462,7 @@ namespace android {
     void
     QualcommCameraHardware::receiveJpegPicture(void)
     {
-        LOGV("receiveJpegPicture: E image (%d bytes out of %d)",
+        ALOGV("receiveJpegPicture: E image (%d bytes out of %d)",
              mJpegSize, mJpegHeap->mBufferSize);
         print_time();
         Mutex::Autolock cbLock(&mCallbackLock);
@@ -1482,7 +1482,7 @@ namespace android {
             mJpegPictureCallback(buffer, mPictureCallbackCookie);
             buffer = NULL;
         }
-        else LOGV("JPEG callback was cancelled--not delivering image.");
+        else ALOGV("JPEG callback was cancelled--not delivering image.");
 
         // NOTE: the JPEG encoder uses the raw image contained in mRawHeap, so we need
         // to keep the heap around until the encoding is complete.
@@ -1498,7 +1498,7 @@ namespace android {
         } /* for */
 
         print_time();
-        LOGV("receiveJpegPicture: X callback done.");
+        ALOGV("receiveJpegPicture: X callback done.");
     }
 
     struct str_map {
@@ -1578,7 +1578,7 @@ namespace android {
 
     void QualcommCameraHardware::initCameraParameters()
     {
-        LOGV("initCameraParameters: E");
+        ALOGV("initCameraParameters: E");
 
         // Because libqcamera is broken, for the camera_set_parm() calls
         // QualcommCameraHardware camera_cb() is called synchronously,
@@ -1588,7 +1588,7 @@ namespace android {
         startCameraIfNecessary();
 
 #define SET_PARM(x,y) do {                                             \
-        LOGV("initCameraParameters: set parm: %s, %d", #x, y);         \
+        ALOGV("initCameraParameters: set parm: %s, %d", #x, y);         \
         LINK_camera_set_parm (x, y, NULL, NULL);                       \
     } while(0)
 
@@ -1601,11 +1601,11 @@ namespace android {
         // Rotation may be negative, but may not be -1, because it has to be a
         // multiple of 90.  That's why we can still interpret -1 as an error,
         if (rotation == -1) {
-            LOGV("rotation not specified or is invalid, defaulting to 0");
+            ALOGV("rotation not specified or is invalid, defaulting to 0");
             rotation = 0;
         }
         else if (rotation % 90) {
-            LOGE("rotation %d is not a multiple of 90 degrees!  Defaulting to zero.",
+            ALOGE("rotation %d is not a multiple of 90 degrees!  Defaulting to zero.",
                  rotation);
             rotation = 0;
         }
@@ -1663,20 +1663,20 @@ namespace android {
 
         int th_w, th_h, th_q;
         th_w = mParameters.getInt("jpeg-thumbnail-width");
-        if (th_w < 0) LOGW("property jpeg-thumbnail-width not specified");
+        if (th_w < 0) ALOGW("property jpeg-thumbnail-width not specified");
 
         th_h = mParameters.getInt("jpeg-thumbnail-height");
-        if (th_h < 0) LOGW("property jpeg-thumbnail-height not specified");
+        if (th_h < 0) ALOGW("property jpeg-thumbnail-height not specified");
 
         th_q = mParameters.getInt("jpeg-thumbnail-quality");
-        if (th_q < 0) LOGW("property jpeg-thumbnail-quality not specified");
+        if (th_q < 0) ALOGW("property jpeg-thumbnail-quality not specified");
 
         if (th_w > 0 && th_h > 0 && th_q > 0) {
-            LOGI("setting thumbnail dimensions to %dx%d, quality %d",
+            ALOGI("setting thumbnail dimensions to %dx%d, quality %d",
                  th_w, th_h, th_q);
             int ret = LINK_camera_set_thumbnail_properties(th_w, th_h, th_q);
             if (ret != CAMERA_SUCCESS) {
-                LOGE("LINK_camera_set_thumbnail_properties returned %d", ret);
+                ALOGE("LINK_camera_set_thumbnail_properties returned %d", ret);
             }
         }
 
@@ -1684,12 +1684,12 @@ namespace android {
         /* Set Default JPEG encoding--this does not cause a callback */
         encode_properties.quality   = mParameters.getInt("jpeg-quality");
         if (encode_properties.quality < 0) {
-            LOGW("JPEG-image quality is not specified "
+            ALOGW("JPEG-image quality is not specified "
                  "or is negative, defaulting to %d",
                  encode_properties.quality);
             encode_properties.quality = 100;
         }
-        else LOGV("Setting JPEG-image quality to %d",
+        else ALOGV("Setting JPEG-image quality to %d",
                   encode_properties.quality);
         encode_properties.format    = CAMERA_JPEG;
         encode_properties.file_size = 0x0;
@@ -1699,14 +1699,14 @@ namespace android {
 #endif
 
 
-        LOGV("initCameraParameters: X");
+        ALOGV("initCameraParameters: X");
     }
 
     // Called with mStateLock held!
     void QualcommCameraHardware::setCameraDimensions()
     {
         if (mCameraState != QCS_IDLE) {
-            LOGE("set camera dimensions: expecting state QCS_IDLE, not %s",
+            ALOGE("set camera dimensions: expecting state QCS_IDLE, not %s",
                  getCameraStateStr(mCameraState));
             return;
         }
@@ -1731,7 +1731,7 @@ namespace android {
             // transition on mStateWait.  That's why we signal(), not
             // broadcast().
 
-            LOGV("state transition %s --> %s",
+            ALOGV("state transition %s --> %s",
                  getCameraStateStr(mCameraState),
                  getCameraStateStr(new_state));
 
@@ -1742,7 +1742,7 @@ namespace android {
         return new_state;
     }
 
-#define CAMERA_STATE(n) case n: if(n != CAMERA_FUNC_START_PREVIEW || cb != CAMERA_EVT_CB_FRAME) LOGV("STATE %s // STATUS %d", #n, cb);
+#define CAMERA_STATE(n) case n: if(n != CAMERA_FUNC_START_PREVIEW || cb != CAMERA_EVT_CB_FRAME) ALOGV("STATE %s // STATUS %d", #n, cb);
 #define TRANSITION(e,s) do { \
             obj->change_state(obj->mCameraState == e ? s : QCS_ERROR); \
         } while(0)
@@ -1780,7 +1780,7 @@ namespace android {
         // Promote the singleton to make sure that we do not get destroyed
         // while this callback is executing.
         if (UNLIKELY(getInstance() == NULL)) {
-            LOGE("camera object has been destroyed--returning immediately");
+            ALOGE("camera object has been destroyed--returning immediately");
             return;
         }
 
@@ -1792,7 +1792,7 @@ namespace android {
             // Autofocus failures occur relatively often and are not fatal, so
             // we do not transition to QCS_ERROR for them.
             if (func != CAMERA_FUNC_START_FOCUS) {
-                LOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d) in state %s.",
+                ALOGE("QualcommCameraHardware::camera_cb: @CAMERA_EXIT_CB_FAILURE(%d) in state %s.",
                      parm4,
                      obj->getCameraStateStr(obj->mCameraState));
                 TRANSITION_ALWAYS(QCS_ERROR);
@@ -1814,12 +1814,12 @@ namespace android {
                             obj->receivePreviewFrame((camera_frame_type *)parm4);
                         break;
                     case QCS_INTERNAL_PREVIEW_STOPPING:
-                        LOGE("camera cb: discarding preview frame "
+                        ALOGE("camera cb: discarding preview frame "
                              "while stopping preview");
                         break;
                     default:
                         // transition to QCS_ERROR
-                        LOGE("camera cb: invalid state %s for preview!",
+                        ALOGE("camera cb: invalid state %s for preview!",
                              obj->getCameraStateStr(obj->mCameraState));
                         break;
                     }
@@ -1829,7 +1829,7 @@ namespace android {
                     break;
                 default:
                     // transition to QCS_ERROR
-                    LOGE("unexpected cb %d for CAMERA_FUNC_START_PREVIEW.",
+                    ALOGE("unexpected cb %d for CAMERA_FUNC_START_PREVIEW.",
                          cb);
                 }
                 break;
@@ -1861,7 +1861,7 @@ namespace android {
                     // waiting in cancelPicture(), and then delete this object.
                     // If the order were reversed, we might call
                     // receiveRawPicture on a dead object.
-                    LOGV("Receiving post LPM raw picture.");
+                    ALOGV("Receiving post LPM raw picture.");
                     obj->receivePostLpmRawPicture((camera_frame_type *)parm4);
                     {
                         Mutex::Autolock lock(&obj->mStateLock);
@@ -1872,7 +1872,7 @@ namespace android {
                     }
                 } else {  // transition to QCS_ERROR
                     if (obj->mCameraState == QCS_ERROR) {
-                        LOGE("camera cb: invalid state %s for taking a picture!",
+                        ALOGE("camera cb: invalid state %s for taking a picture!",
                              obj->getCameraStateStr(obj->mCameraState));
                         obj->mRawPictureCallback(NULL, obj->mPictureCallbackCookie);
                         obj->mJpegPictureCallback(NULL, obj->mPictureCallbackCookie);
@@ -1892,7 +1892,7 @@ namespace android {
                         obj->receiveJpegPictureFragment(
                             (JPEGENC_CBrtnType *)parm4);
                     }
-                    else LOGE("camera cb: invalid state %s for receiving "
+                    else ALOGE("camera cb: invalid state %s for receiving "
                               "JPEG fragment!",
                               obj->getCameraStateStr(obj->mCameraState));
                     break;
@@ -1916,13 +1916,13 @@ namespace android {
                         TRANSITION(QCS_WAITING_JPEG, QCS_IDLE);
                     }
                     // transition to QCS_ERROR
-                    else LOGE("camera cb: invalid state %s for "
+                    else ALOGE("camera cb: invalid state %s for "
                               "receiving JPEG!",
                               obj->getCameraStateStr(obj->mCameraState));
                     break;
                 default:
                     // transition to QCS_ERROR
-                    LOGE("camera cb: unknown cb %d for JPEG!", cb);
+                    ALOGE("camera cb: unknown cb %d for JPEG!", cb);
                 }
             break;
             CAMERA_STATE(CAMERA_FUNC_START_FOCUS) {
@@ -1933,10 +1933,10 @@ namespace android {
                 if (obj->mAutoFocusCallback) {
                     switch (cb) {
                     case CAMERA_RSP_CB_SUCCESS:
-                        LOGV("camera cb: autofocus has started.");
+                        ALOGV("camera cb: autofocus has started.");
                         break;
                     case CAMERA_EXIT_CB_DONE: {
-                        LOGV("camera cb: autofocus succeeded.");
+                        ALOGV("camera cb: autofocus succeeded.");
                         Mutex::Autolock lock(&obj->mStateLock);
                         if (obj->mAutoFocusCallback) {
                             obj->mAutoFocusCallback(true,
@@ -1946,10 +1946,10 @@ namespace android {
                     }
                         break;
                     case CAMERA_EXIT_CB_ABORT:
-                        LOGE("camera cb: autofocus aborted");
+                        ALOGE("camera cb: autofocus aborted");
                         break;
                     case CAMERA_EXIT_CB_FAILED: {
-                        LOGE("camera cb: autofocus failed");
+                        ALOGE("camera cb: autofocus failed");
                         Mutex::Autolock lock(&obj->mStateLock);
                         if (obj->mAutoFocusCallback) {
                             obj->mAutoFocusCallback(false,
@@ -1959,14 +1959,14 @@ namespace android {
                     }
                         break;
                     default:
-                        LOGE("camera cb: unknown cb %d for "
+                        ALOGE("camera cb: unknown cb %d for "
                              "CAMERA_FUNC_START_FOCUS!", cb);
                     }
                 }
             } break;
         default:
             // transition to QCS_ERROR
-            LOGE("Unknown camera-callback status %d", cb);
+            ALOGE("Unknown camera-callback status %d", cb);
         }
     }
 
@@ -2025,7 +2025,7 @@ namespace android {
                                         frame_offset,
                                         name)
     {
-            LOGV("constructing MemPool %s backed by ashmem: "
+            ALOGV("constructing MemPool %s backed by ashmem: "
                  "%d frames @ %d bytes, offset %d, "
                  "buffer size %d",
                  mName,
@@ -2052,7 +2052,7 @@ namespace android {
                                         frame_offset,
                                         name)
     {
-        LOGV("constructing MemPool %s backed by pmem pool %s: "
+        ALOGV("constructing MemPool %s backed by pmem pool %s: "
              "%d frames @ %d bytes, offset %d, buffer size %d",
              mName,
              pmem_pool, num_buffers, frame_size, frame_offset,
@@ -2073,20 +2073,20 @@ namespace android {
             
             mFd = mHeap->getHeapID();
             if (::ioctl(mFd, PMEM_GET_SIZE, &mSize)) {
-                LOGE("pmem pool %s ioctl(PMEM_GET_SIZE) error %s (%d)",
+                ALOGE("pmem pool %s ioctl(PMEM_GET_SIZE) error %s (%d)",
                      pmem_pool,
                      ::strerror(errno), errno);
                 mHeap.clear();
                 return;
             }
             
-            LOGV("pmem pool %s ioctl(PMEM_GET_SIZE) is %ld",
+            ALOGV("pmem pool %s ioctl(PMEM_GET_SIZE) is %ld",
                  pmem_pool,
                  mSize.len);
             
             completeInitialization();
         }
-        else LOGE("pmem pool %s error: could not create master heap!",
+        else ALOGE("pmem pool %s error: could not create master heap!",
                   pmem_pool);
     }
 
@@ -2102,7 +2102,7 @@ namespace android {
                                          frame_offset,
                                          name)
     {
-        LOGV("constructing PreviewPmemPool");
+        ALOGV("constructing PreviewPmemPool");
         if (initialized()) {
             LINK_camera_assoc_pmem(QDSP_MODULE_VFETASK,
                                    mFd,
@@ -2114,10 +2114,10 @@ namespace android {
 
     QualcommCameraHardware::PreviewPmemPool::~PreviewPmemPool()
     {
-        LOGV("destroying PreviewPmemPool");
+        ALOGV("destroying PreviewPmemPool");
         if(initialized()) {
             void *base = mHeap->base();
-            LOGV("releasing PreviewPmemPool memory %p from module %d",
+            ALOGV("releasing PreviewPmemPool memory %p from module %d",
                  base, QDSP_MODULE_VFETASK);
             LINK_camera_release_pmem(QDSP_MODULE_VFETASK, base,
                                      mAlignedSize,
@@ -2138,7 +2138,7 @@ namespace android {
                                          frame_offset,
                                          name)
     {
-        LOGV("constructing RawPmemPool");
+        ALOGV("constructing RawPmemPool");
 
         if (initialized()) {
             LINK_camera_assoc_pmem(QDSP_MODULE_VFETASK,
@@ -2161,10 +2161,10 @@ namespace android {
 
     QualcommCameraHardware::RawPmemPool::~RawPmemPool()
     {
-        LOGV("destroying RawPmemPool");
+        ALOGV("destroying RawPmemPool");
         if(initialized()) {
             void *base = mHeap->base();
-            LOGV("releasing RawPmemPool memory %p from modules %d, %d, and %d",
+            ALOGV("releasing RawPmemPool memory %p from modules %d, %d, and %d",
                  base, QDSP_MODULE_VFETASK, QDSP_MODULE_LPMTASK,
                  QDSP_MODULE_JPEGTASK);
             LINK_camera_release_pmem(QDSP_MODULE_VFETASK,
@@ -2178,11 +2178,11 @@ namespace android {
     
     QualcommCameraHardware::MemPool::~MemPool()
     {
-        LOGV("destroying MemPool %s", mName);
+        ALOGV("destroying MemPool %s", mName);
         if (mFrameSize > 0)
             delete [] mBuffers;
         mHeap.clear();
-        LOGV("destroying MemPool %s completed", mName);        
+        ALOGV("destroying MemPool %s completed", mName);        
     }
     
     status_t QualcommCameraHardware::MemPool::dump(int fd, const Vector<String16>& args) const
@@ -2254,7 +2254,7 @@ namespace android {
 
     static void cb_rex_signal_ready(void)
     {
-        LOGV("Received REX-ready signal.");
+        ALOGV("Received REX-ready signal.");
         rex_init_lock.lock();
         rex_init_wait.broadcast();
         rex_init_lock.unlock();
