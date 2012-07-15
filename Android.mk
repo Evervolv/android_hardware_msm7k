@@ -27,7 +27,11 @@ msm7k_dirs := $(common_msm_dirs) boot
 ifeq ($(TARGET_BOARD_PLATFORM),msm7x27)
   include $(call all-named-subdir-makefiles,$(msm7k_dirs))
 else
-  include $(call all-named-subdir-makefiles,$(common_msm_dirs))
+  ifeq ($(filter msm8960 msm8660 msm7627a,$(TARGET_BOARD_PLATFORM)),)
+     include $(call all-named-subdir-makefiles,$(common_msm_dirs))
+  else
+     include $(call all-named-subdir-makefiles,librpc)
+  endif
 endif
 
 endif
