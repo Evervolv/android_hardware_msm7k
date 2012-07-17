@@ -372,7 +372,7 @@ static void *rx_context(void *__u __attribute__((unused)))
             if (((uint32 *)(client->xdr->in_msg))[RPC_OFFSET+1] ==
                 htonl(RPC_MSG_REPLY)) {
                 /* Wake up the RPC client to receive its data. */
-                LIBRPC_DEBUG("%08x:%08x received REPLY (XID %d), "
+                D("%08x:%08x received REPLY (XID %d), "
                   "grabbing mutex to wake up client.\n",
                   client->xdr->x_prog,
                   client->xdr->x_vers,
@@ -387,7 +387,7 @@ static void *rx_context(void *__u __attribute__((unused)))
             }
             else {
                 pthread_mutex_lock(&client->wait_cb_lock);
-                LIBRPC_DEBUG("%08x:%08x received CALL.\n",
+                D("%08x:%08x received CALL.\n",
                   client->xdr->x_prog,
                   client->xdr->x_vers);
                 client->got_cb = 1;
@@ -477,7 +477,7 @@ clnt_call(
         goto out_unlock;
     }
 
-    LIBRPC_DEBUG("%08x:%08x sending call (XID %d).\n",
+    D("%08x:%08x sending call (XID %d).\n",
       client->xdr->x_prog, client->xdr->x_vers, client->xdr->xid);
     if (!XDR_MSG_SEND(xdr)) {
         E("error %d in XDR_MSG_SEND\n", xdr->xdr_err);
@@ -542,7 +542,7 @@ clnt_call(
         goto out_unlock;
     }
 
-    LIBRPC_DEBUG("%08x:%08x call success.\n",
+    D("%08x:%08x call success.\n",
       client->xdr->x_prog, client->xdr->x_vers);
 
   out_unlock:
