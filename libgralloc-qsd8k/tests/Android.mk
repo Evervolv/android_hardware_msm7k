@@ -42,7 +42,6 @@ define host-test
     $(eval LOCAL_CFLAGS += $(EXTRA_CFLAGS)) \
     $(eval LOCAL_LDLIBS += $(EXTRA_LDLIBS)) \
     $(eval LOCAL_STATIC_LIBRARIES := $(libgralloc_test_static_libs)) \
-    $(eval LOCAL_MODULE_TAGS := eng tests) \
     $(eval include $(BUILD_HOST_EXECUTABLE)) \
   ) \
   $(eval EXTRA_CFLAGS :=) \
