@@ -22,11 +22,5 @@ msm7x30_dirs := liblights libgralloc-qsd8k librpc libaudio-qdsp5v2
 ifeq ($(TARGET_BOARD_PLATFORM),msm7k)
   include $(call all-named-subdir-makefiles,$(msm7k_dirs))
 else
-  ifeq ($(TARGET_BOARD_PLATFORM),qsd8k)
-    include $(call all-named-subdir-makefiles,$(qsd8k_dirs))
-  else
-    ifeq ($(TARGET_BOARD_PLATFORM),msm7x30)
-      include $(call all-named-subdir-makefiles,$(msm7x30_dirs))
-    endif
-  endif
+
 endif
